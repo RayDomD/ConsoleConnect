@@ -1,0 +1,6 @@
+{
+  "prompt": "Use case: ui-mockup, precise style-transfer edit. Edit the supplied Console Connect Paper & ink application screenshot. Preserve EXACTLY its three-column Review Desk layout, all UI text and content, spacing, sizes, icons, thin borders, serif task heading, sans-serif controls and monospace terminal, and light editorial feel. This is a palette-only exploration. Keep the terminal light. No new features, no repositioning, no dark mode, no gradients, no decorative texture, no poster or device frame. Maintain readable contrast. Replace ALL burgundy/red accents on primary buttons, tabs, selections, avatars, links and indicators with the new coordinated accent below. Recolor the neutral backgrounds and text subtly as specified. Flat high-fidelity desktop screenshot at the reference dimensions. Palette: warm linen canvas #F4F2E9, light sage-stone sidebar #E5E9DF, ivory main and terminal #FCFBF5, deep green-black body text #253A30, muted olive-grey secondary text #5B6B5E, soft sage dividers #CDD5C7, forest green accent #2D624B with ivory button text. Active selection is pale sage, primary buttons solid forest green. Calm botanical editorial character, restrained and professional. No burgundy or blue accent.",
+  "tool": "image_gen.imagegen",
+  "reference": "paper-ink.png",
+  "approved": false
+}

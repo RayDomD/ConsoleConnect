@@ -1,0 +1,110 @@
+import { RequestError, type Command, type Member, type WorkspaceState } from './protocol';
+
+export function applyCommand(state: WorkspaceState, actor: Member, command: Command) {
+  if (command.type === 'propose-decision') {
+    if (state.decisions.some(item => item.id === command.decisionId)) throw new RequestError(409, 'This decision already exists.');
+    if (command.supersedesId && !state.decisions.some(item => item.id === command.supersedesId && item.status === 'official')) {
+      throw new RequestError(409, 'Choose an official decision to replace.');
+    }
+    if (command.affectedTaskIds?.some(id => !state.tasks.some(task => task.id === id))) throw new RequestError(400, 'Choose existing affected tasks.');
+    state.decisions.push({ id: command.decisionId, title: command.title, body: command.body,
+      proposedBy: actor.id, createdAt: new Date().toISOString(), status: 'proposed',
+      supersedesId: command.supersedesId, affectedTaskIds: [...new Set(command.affectedTaskIds ?? [])] });
+    return;
+  }
+  if (command.type === 'approve-decision') {
+    if (actor.role === 'contributor') throw new RequestError(403, 'Only an owner or reviewer can approve decisions.');
+    const decision = state.decisions.find(item => item.id === command.decisionId);
+    if (!decision) throw new RequestError(404, 'Decision not found.');
+    if (decision.status !== 'proposed') throw new RequestError(409, 'This decision is already official.');
+    if (decision.supersedesId && !state.decisions.some(item => item.id === decision.supersedesId && item.status === 'official')) {
+      throw new RequestError(409, 'The decision being replaced has changed.');
+    }
+    decision.status = 'official';
+    decision.documentCommit = command.commitSha;
+    if (decision.supersedesId) state.decisions.find(item => item.id === decision.supersedesId)!.status = 'superseded';
+    for (const task of state.tasks) {
+      if (decision.affectedTaskIds.includes(task.id) && task.status !== 'completed') {
+        task.pendingDecisionIds ??= [];
+        task.pendingDecisionIds.push(decision.id);
+        task.revision += 1;
+      }
+    }
+    return;
+  }
+  if (command.type === 'create-task') {
+    if (state.tasks.some(task => task.id === command.taskId)) throw new RequestError(409, 'This task already exists.');
+    if (command.assigneeId && !state.members.some(member => member.id === command.assigneeId)) throw new RequestError(400, 'Choose a workspace member.');
+    state.tasks.push({ id: command.taskId, title: command.title, description: command.description,
+      authorId: actor.id, assigneeId: command.assigneeId, status: command.assigneeId ? 'awaiting_approval' : 'unassigned',
+      revision: 1, createdAt: new Date().toISOString() });
+    return;
+  }
+  if (command.type === 'post-message') {
+    if (command.taskId && !state.tasks.some(task => task.id === command.taskId)) throw new RequestError(404, 'Task not found.');
+    state.messages.push({ id: command.id, taskId: command.taskId, authorId: actor.id,
+      body: command.body, createdAt: new Date().toISOString() });
+    return;
+  }
+  const task = state.tasks.find(item => item.id === command.taskId);
+  if (!task) throw new RequestError(404, 'Task not found.');
+  if (command.type === 'claim-task' || command.type === 'assign-task') {
+    if (task.revision !== command.revision) throw new RequestError(409, 'This task changed. Refresh it before trying again.');
+    if (task.status !== 'unassigned') throw new RequestError(409, 'This task is already assigned.');
+    if (command.type === 'claim-task') { task.assigneeId = actor.id; task.status = 'ready'; }
+    else {
+      if (!state.members.some(member => member.id === command.assigneeId)) throw new RequestError(400, 'Choose a workspace member.');
+      task.assigneeId = command.assigneeId;
+      task.status = command.assigneeId === actor.id ? 'ready' : 'awaiting_approval';
+    }
+    task.revision += 1;
+    return;
+  }
+  if (command.type === 'accept-package' || command.type === 'request-changes') {
+    if (actor.id === task.assigneeId || actor.role === 'contributor') throw new RequestError(403, 'An independent reviewer must review this package.');
+  } else if (task.assigneeId !== actor.id) throw new RequestError(403, 'Only the assigned person can update this task.');
+  if (task.revision !== command.revision) throw new RequestError(409, 'This task changed. Refresh it before trying again.');
+  switch (command.type) {
+    case 'acknowledge-decision':
+      if (!task.pendingDecisionIds?.includes(command.decisionId)) throw new RequestError(409, 'This task has no pending acknowledgement for that decision.');
+      task.pendingDecisionIds = task.pendingDecisionIds.filter(id => id !== command.decisionId);
+      break;
+    case 'approve-task':
+      if (task.status !== 'awaiting_approval') throw new RequestError(409, 'This task is not awaiting your approval.');
+      task.status = 'ready';
+      break;
+    case 'start-task':
+      if (task.status !== 'ready') throw new RequestError(409, 'Approve this assignment before starting work.');
+      task.status = 'running';
+      task.tool = command.tool;
+      break;
+    case 'save-package':
+      if (task.status !== 'running' && task.status !== 'changes_requested') throw new RequestError(409, 'This task is not ready for a draft.');
+      task.draftPackage = { summary: command.summary, sourceRef: command.sourceRef, pullRequestUrl: command.pullRequestUrl,
+        deliverables: command.deliverables,
+        verification: command.verification, questions: command.questions };
+      break;
+    case 'submit-package':
+      if (task.pendingDecisionIds?.length) throw new RequestError(409, 'Acknowledge changed decisions before submitting work.');
+      if ((task.status !== 'running' && task.status !== 'changes_requested') || !task.draftPackage) throw new RequestError(409, 'Save a draft before submitting it.');
+      task.status = 'submitted';
+      task.package = task.draftPackage;
+      delete task.draftPackage;
+      delete task.pullRequestStatus;
+      task.package.submittedAt = new Date().toISOString();
+      break;
+    case 'accept-package':
+      if (task.pendingDecisionIds?.length) throw new RequestError(409, 'The task owner must acknowledge changed decisions before review.');
+      if (task.status !== 'submitted' || !task.package) throw new RequestError(409, 'There is no submitted package to review.');
+      task.status = task.pullRequestStatus?.mergedAt ? 'completed' : 'accepted';
+      task.package.reviewedBy = actor.id;
+      break;
+    case 'request-changes':
+      if (task.status !== 'submitted' || !task.package) throw new RequestError(409, 'There is no submitted package to review.');
+      task.status = 'changes_requested';
+      task.package.reviewedBy = actor.id;
+      task.package.reviewNote = command.note;
+      break;
+  }
+  task.revision += 1;
+}

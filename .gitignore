@@ -1,0 +1,12 @@
+node_modules/
+dist/
+release/
+.local/
+supabase/.temp/
+supabase/functions/console-connect/_internal/core.js
+artifacts/
+docs/mockups/sessions/
+*.log
+.env
+.env.*
+!.env.example

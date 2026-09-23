@@ -1,0 +1,64 @@
+{
+  "name": "console-connect",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A shared workspace for people and their local AI tools",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "build:hosted": "node scripts/build-hosted.mjs",
+    "check:hosted-schema": "powershell -NoProfile -File scripts/check-supabase-schema.ps1",
+    "check:providers": "node scripts/provider-smoke.mjs",
+    "start": "electron .",
+    "dev": "npm run build && electron .",
+    "package": "npm run build && electron-builder --dir",
+    "package:win": "npm run build && electron-builder --win nsis",
+    "shoot": "npm run build && node scripts/smoke.mjs --screenshot",
+    "smoke": "npm run build && node scripts/smoke.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.0",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.1.0",
+    "ws": "^8.18.3",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "@types/ws": "^8.18.1",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2",
+    "supabase": "^2.117.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1"
+  },
+  "build": {
+    "appId": "dev.consoleconnect.desktop",
+    "productName": "Console Connect",
+    "files": [
+      "dist/**/*",
+      "package.json"
+    ],
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/node-pty/**/*"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
