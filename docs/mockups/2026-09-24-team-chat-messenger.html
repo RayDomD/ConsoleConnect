@@ -1,0 +1,57 @@
+<link rel="stylesheet" href="2026-09-24-team-chat-messenger.css">
+<h2>Team chat, with a Messenger-style conversation</h2>
+<p class="subtitle">The familiar message layout sits inside Console Connect’s existing Paper & ink workspace.</p>
+
+<div class="cc-preview">
+  <aside class="cc-rail">
+    <div class="cc-brand">CONSOLE <strong>CONNECT</strong></div>
+    <div class="cc-project">Smoke team</div>
+    <div class="cc-repo">github.com/example/demo</div>
+    <hr class="cc-rule">
+    <div class="cc-kicker">TASKS <span>3</span></div>
+    <div class="cc-nav">Review login<small>Unassigned</small></div>
+    <div class="cc-nav">Finish team sign-in<small>Running</small></div>
+    <div class="cc-nav cc-nav-active">Team chat<small>Workspace conversation</small></div>
+  </aside>
+
+  <main class="cc-main">
+    <header class="cc-topbar"><span>REVIEW DESK</span><span>Projects &nbsp;&nbsp; Settings</span></header>
+    <div class="cc-chat-head">
+      <div><div class="cc-kicker">WORKSPACE</div><h3>Team chat</h3><p>Questions, progress, and quick updates for everyone.</p></div>
+      <div class="cc-people" aria-label="Alex, Blair, and Casey"><span>AL</span><span>BM</span><span>CY</span></div>
+    </div>
+
+    <div class="cc-stream" aria-label="Team messages">
+      <div class="cc-date">TODAY · SEPTEMBER 24</div>
+      <div class="cc-message">
+        <span class="cc-avatar">AL</span>
+        <div><div class="cc-message-meta">Alex · 9:41 AM</div><div class="cc-bubble">OAuth callback is ready for review. I added the branch to the task package.</div></div>
+      </div>
+      <div class="cc-message cc-message-own">
+        <span class="cc-avatar">BM</span>
+        <div><div class="cc-message-meta">You · 9:48 AM</div><div class="cc-bubble">I’ll test the Google sign-in path and post what I find.</div></div>
+      </div>
+      <div class="cc-message">
+        <span class="cc-avatar">AL</span>
+        <div><div class="cc-message-meta">Alex · 10:02 AM</div><div class="cc-bubble">Great. Please check what happens when an invitation has expired too.</div></div>
+      </div>
+      <div class="cc-message">
+        <span class="cc-avatar">CY</span>
+        <div><div class="cc-message-meta">Casey · 10:15 AM</div><div class="cc-bubble">I can review the GitHub path once the tests are done.</div></div>
+      </div>
+    </div>
+
+    <div class="cc-compose">
+      <label for="cc-draft">MESSAGE THE TEAM</label>
+      <div class="cc-compose-row"><textarea id="cc-draft" placeholder="Write an update or ask a question…"></textarea><button type="button">Send</button></div>
+    </div>
+  </main>
+
+  <aside class="cc-side">
+    <h4>TEAM</h4>
+    <div class="cc-person"><span class="cc-avatar">AL</span><span>Alex<small>Owner</small></span></div>
+    <div class="cc-person"><span class="cc-avatar">BM</span><span>Blair<small>Contributor</small></span></div>
+    <div class="cc-person"><span class="cc-avatar">CY</span><span>Casey<small>Reviewer</small></span></div>
+    <div class="cc-side-note">Official decisions and task reviews stay in their own places. This conversation is for the team’s day-to-day coordination.</div>
+  </aside>
+</div>
