@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Office sharing toggle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--focus:#355CA8;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--lift-3:var(--ring),0 2px 4px rgb(37 58 48/.06),0 24px 48px -16px rgb(37 58 48/.28);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 16px;color:var(--muted);max-width:110ch}
+.code{font:12px 'JetBrains Mono',monospace}
+.stage{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.dev{font-size:12px;font-weight:600;margin:0 0 8px;display:flex;align-items:center;gap:8px}.dev i{width:10px;height:10px;border-radius:3px}
+.win{border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2);height:470px;display:flex;flex-direction:column;position:relative}
+.bar{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;box-shadow:inset 0 -1px 0 var(--border);font-size:13px}.bar .m{color:var(--muted)}
+.sp{flex:1}
+.frame{margin:12px 14px 14px;border-radius:12px;overflow:hidden;box-shadow:var(--lift-2);display:flex;flex-direction:column;flex:1;min-height:0}
+.strip{display:flex;align-items:center;gap:10px;padding:7px 10px 7px 12px;font-size:12px;color:var(--muted);box-shadow:inset 0 -1px 0 var(--border)}
+.tool{display:inline-flex;align-items:center;gap:6px;color:var(--text);font-weight:600}.tool i{width:12px;height:12px;border-radius:3px;background:#C66B3D}
+/* the accessible switch */
+.share{display:inline-flex;align-items:center;gap:8px;border:0;background:transparent;padding:4px 8px 4px 4px;border-radius:99px;font:500 12px 'Instrument Sans';color:var(--text);cursor:pointer;transition:background-color 150ms var(--ease)}
+.share:hover{background:var(--canvas)}
+.share:focus-visible{outline:none;box-shadow:0 0 0 2px var(--surface),0 0 0 4px var(--focus)}
+.track{width:30px;height:18px;border-radius:99px;background:var(--border);position:relative;transition:background-color 180ms var(--ease);flex:none}
+.track::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgb(0 0 0/.2);transition:transform 180ms var(--ease)}
+.share[aria-checked=true] .track{background:var(--accent)}.share[aria-checked=true] .track::after{transform:translateX(12px)}
+.share:active .track::after{width:17px}
+.share .ico{width:14px;height:14px}
+.watch{font-size:11.5px;color:var(--muted)}
+.term{flex:1;background:var(--well);padding:10px 12px;font:11.5px/1.65 'JetBrains Mono',monospace;color:#62676C;overflow:hidden}
+.term .p{color:#2D624B}.term .g{color:#346F4B}
+.toast{position:absolute;left:14px;right:14px;bottom:14px;border-radius:10px;background:var(--surface);box-shadow:var(--lift-3);padding:9px 12px;font-size:12.5px;display:none;align-items:center;gap:10px}
+.toast.on{display:flex;animation:rise 240ms var(--ease)}@keyframes rise{from{opacity:0;transform:translateY(6px)}}
+.link{border:0;background:none;color:var(--accent);font:600 12px 'Instrument Sans';cursor:pointer;padding:2px 4px;border-radius:6px}.link:focus-visible{outline:none;box-shadow:0 0 0 2px var(--focus)}
+/* office */
+.body{padding:12px 14px;flex:1;min-height:0;display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
+.room{border-radius:14px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.room h4{margin:0 2px;font:600 12.5px 'Instrument Sans'}
+.r-build{background:#EAEFE5}.r-rev{background:#E9EDF3}
+.card{border-radius:11px;background:var(--surface);box-shadow:var(--lift-1);padding:9px 10px}
+.card .top{display:flex;align-items:center;gap:8px;font-size:12.5px}.card b{font-size:13px}
+.av{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--selection);color:var(--accent);font-size:11px;font-weight:700;position:relative;flex:none}
+.av .pr{position:absolute;right:-1px;bottom:-1px;width:8px;height:8px;border-radius:50%;background:#3E8E5F;box-shadow:0 0 0 2px var(--surface)}
+.task{font-size:12px;color:var(--muted);margin:5px 0 6px;display:flex;align-items:center;gap:6px}
+.tail{background:var(--well);border-radius:7px;padding:5px 8px;font:10.8px/1.55 'JetBrains Mono',monospace;color:#62676C;height:52px;overflow:hidden;transition:opacity 180ms var(--ease)}
+.priv{display:flex;align-items:center;justify-content:center;gap:6px;font:500 11.5px 'Instrument Sans';color:var(--muted);text-align:center}
+.lock{width:13px;height:13px}
+.badge{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;margin-left:auto}
+.b-on{background:var(--selection);color:var(--accent)}.b-off{box-shadow:inset 0 0 0 1px var(--border);color:var(--muted);font-weight:500}
+.viewer{border-radius:11px;background:var(--surface);box-shadow:var(--lift-2);overflow:hidden;display:flex;flex-direction:column;height:210px}
+.viewer .vs{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:11.5px;color:var(--muted);box-shadow:inset 0 -1px 0 var(--border)}
+.viewer .vt{flex:1;background:var(--well);padding:8px 10px;font:10.8px/1.6 'JetBrains Mono',monospace;color:#62676C;position:relative}
+.ended{position:absolute;inset:0;display:none;place-items:center;background:rgb(247 246 239/.92);text-align:center;font:500 12.5px 'Instrument Sans';color:var(--text)}
+.ended.on{display:grid;animation:fade 200ms var(--ease)}@keyframes fade{from{opacity:0}}
+.ended p{margin:4px 0 8px;color:var(--muted);font-size:12px}
+.btn2{border:0;border-radius:8px;background:var(--surface);color:var(--text);padding:6px 11px;font:500 12px 'Instrument Sans';box-shadow:inset 0 0 0 1px var(--border);cursor:pointer}
+.btn2:focus-visible{outline:none;box-shadow:inset 0 0 0 1px var(--border),0 0 0 2px var(--surface),0 0 0 4px var(--focus)}
+.a11y{margin-top:18px;border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:14px 16px;display:grid;grid-template-columns:1.1fr 1fr;gap:22px;font-size:13px}
+.a11y h3{margin:0 0 6px;font:600 14px 'Instrument Sans'}.a11y ul{margin:0;padding-left:18px;color:var(--muted)}.a11y li{margin:3px 0}
+.a11y pre{margin:0;background:var(--well);border-radius:8px;padding:10px 12px;font:11.5px/1.6 'JetBrains Mono',monospace;color:#253A30;white-space:pre-wrap}
+.places{margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);gap:16px;font-size:13px}
+.places div{border-top:1px solid var(--border);padding-top:10px}.places b{display:block;margin-bottom:3px}.places p{margin:0;color:var(--muted)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q18 · Locked in as A · the toggle, on and off</div>
+<h1>One switch on the console strip. Try it with the mouse or keyboard (Tab, then Space)</h1>
+<p class="lede">Left is Sam's console. Right is what Blair sees in the Office while watching Sam. Turning sharing off updates both sides at once: Blair's viewer ends politely, and Sam's card keeps his presence but hides the glimpse.</p>
+<div class="stage">
+ <div><div class="dev"><i style="background:#9A4F19"></i>Sam's computer · his task console</div>
+  <div class="win"><div class="bar"><span class="m">Smoke team</span><span class="m">/</span><b>Expired invite retry</b></div>
+   <div class="frame"><div class="strip"><span class="tool"><i></i>Claude Code</span><span>task/expired-invite-retry</span><span class="sp"></span><span class="watch" id="watchers">Blair is watching</span>
+     <button class="share" id="sw" role="switch" aria-checked="true" aria-describedby="swdesc"><span class="track"></span><span id="swl">Shown in Office</span></button>
+     <span id="swdesc" hidden>Teammates see a view-only glimpse of this console. They can't type.</span></div>
+    <div class="term" id="term"><div class="p">&gt; Task: Expired invite retry (assigned by Blair)</div><div>  Reading src/oauth-callback.ts</div><div>  Editing src/invitations.ts (+18 −4)</div><div>  Writing tests/invitations.test.ts (+22)</div><div>● npm test</div><div class="g">  ✓ 34 passed</div></div></div>
+   <div class="toast" id="toast" role="status"><span id="tmsg">Console hidden from the Office. Blair's view ended.</span><span class="sp"></span><button class="link" id="undo">Undo</button></div></div></div>
+ <div><div class="dev"><i style="background:#355CA8"></i>Blair's computer · the Office</div>
+  <div class="win"><div class="bar"><b>Office</b><span class="m">5 here</span></div>
+   <div class="body"><div class="room r-build"><h4>Building</h4>
+     <div class="card"><div class="top"><span class="av">S<i class="pr"></i></span><b>Sam</b><span class="badge b-on" id="badge">Shared</span></div><div class="task"><span style="width:11px;height:11px;border-radius:3px;background:#C66B3D;display:inline-block"></span>Expired invite retry · 21m</div>
+      <div class="tail" id="tail"><div>  Writing tests/invitations.test.ts</div><div>● npm test</div><div>  ✓ 34 passed</div></div></div>
+     <div class="viewer" aria-live="polite"><div class="vs"><b style="color:var(--text)">Sam's console</b><span>View only</span></div><div class="vt"><div>  Editing src/invitations.ts (+18 −4)</div><div>  Writing tests/invitations.test.ts</div><div>● npm test</div><div>  ✓ 34 passed</div>
+      <div class="ended" id="ended"><div><b>Sam stopped sharing this console</b><p>You can still follow the task and its discussion.</p><button class="btn2">Open task</button> <button class="btn2">Ask to watch</button></div></div></div></div></div>
+    <div class="room r-rev"><h4>Reviewing</h4><div class="card"><div class="top"><span class="av">B<i class="pr"></i></span><b>Blair</b><span class="badge b-on">Shared</span></div><div class="task">Check codex launch</div></div></div></div></div></div>
+</div>
+
+<div class="a11y"><div><h3>Built to be accessible</h3><ul>
+ <li>A real switch: <span class="code">role="switch"</span> with <span class="code">aria-checked</span>. Space and Enter toggle it, and it's reachable with Tab</li>
+ <li>The label always says the state in words, "Shown in Office" or "Private", so it never relies on color alone</li>
+ <li>A visible focus ring, and a 32px hit area around the 30px track</li>
+ <li>A status message announces the change ("Console hidden from the Office"), with Undo reachable by keyboard</li>
+ <li>The watcher's viewer announces "Sam stopped sharing" through a polite live region</li>
+ <li>The thumb movement is 180ms, with none under reduced-motion settings</li></ul></div>
+ <div><h3>What screen readers hear</h3><pre>"Shown in Office, switch, on.
+ Teammates see a view-only glimpse
+ of this console. They can't type."
+
+[Space]
+
+"Private, switch, off."
+"Console hidden from the Office.
+ Blair's view ended. Undo, button."</pre></div></div>
+
+<div class="places">
+ <div><b>Console strip (shown)</b><p>The per-session switch, always visible while a console runs. Keyboard shortcut: <span class="code">Ctrl+Shift+S</span>, active only when the terminal isn't focused.</p></div>
+ <div><b>Office header</b><p>"Show my console here" does the same for your current session, with the same switch and label.</p></div>
+ <div><b>Settings › Office</b><p>Your default for new consoles: the answer from the first-launch prompt, changeable anytime.</p></div>
+</div>
+</div>
+<script>
+const set=on=>{sw.setAttribute('aria-checked',on);swl.textContent=on?'Shown in Office':'Private';
+ watchers.textContent=on?'Blair is watching':'';badge.textContent=on?'Shared':'Private';badge.className='badge '+(on?'b-on':'b-off');
+ tail.className='tail'+(on?'':' priv');tail.innerHTML=on?'<div>  Writing tests/invitations.test.ts</div><div>● npm test</div><div>  ✓ 34 passed</div>':'<svg class="lock" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg>Sam\'s console is private';
+ ended.classList.toggle('on',!on);
+ if(!on){tmsg.textContent="Console hidden from the Office. Blair's view ended.";toast.classList.add('on')}else{toast.classList.remove('on')}};
+sw.onclick=()=>set(sw.getAttribute('aria-checked')!=='true');undo.onclick=()=>set(true);
+</script>
+</body></html>

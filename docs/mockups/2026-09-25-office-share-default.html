@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q18: sharing default</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--lift-3:var(--ring),0 2px 4px rgb(37 58 48/.06),0 24px 48px -16px rgb(37 58 48/.28);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;padding:24px 30px 60px}
+.wrap{max-width:1440px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 18px;color:var(--muted);max-width:108ch}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.opt>p{margin:0 0 10px;font-size:13px;color:var(--muted);min-height:40px}
+.win{border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2);height:330px;position:relative;display:flex;flex-direction:column}
+.strip{display:flex;align-items:center;gap:9px;padding:8px 12px;font-size:12px;color:var(--muted);box-shadow:inset 0 -1px 0 var(--border)}
+.tool{display:inline-flex;align-items:center;gap:6px;color:var(--text);font-weight:600}.tool i{width:12px;height:12px;border-radius:3px;background:#C66B3D}
+.sp{flex:1}
+.shared{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--selection);color:var(--accent)}
+.shared i{width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.private{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:500;padding:2px 9px;border-radius:99px;box-shadow:inset 0 0 0 1px var(--border)}
+.term{flex:1;background:var(--well);padding:10px 12px;font:11.5px/1.65 'JetBrains Mono',monospace;color:#62676C}
+.dlg{position:absolute;left:16px;right:16px;bottom:16px;background:var(--surface);border-radius:12px;box-shadow:var(--lift-3);padding:14px;font-size:13px;animation:rise 260ms var(--ease)}
+@keyframes rise{from{opacity:0;transform:translateY(8px)}}
+.dlg b{display:block;font-size:14px;margin-bottom:4px}.dlg p{margin:0 0 10px;color:var(--muted)}
+.row{display:flex;gap:8px;align-items:center}
+.btn{border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:7px 13px;font:600 12.5px 'Instrument Sans';box-shadow:inset 0 1px 0 rgb(255 255 255/.16),0 1px 2px rgb(20 40 30/.25)}
+.btn2{border:0;border-radius:8px;background:transparent;color:var(--text);padding:7px 13px;font:500 12.5px 'Instrument Sans';box-shadow:inset 0 0 0 1px var(--border)}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;font-size:12px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.fixed{margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;font-size:13px}
+.fixed div{border-top:1px solid var(--border);padding-top:10px}.fixed b{display:block;margin-bottom:3px}.fixed p{margin:0;color:var(--muted)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q18 · Office sharing default</div>
+<h1>When someone launches a console, is it in the Office by default?</h1>
+<p class="lede">The Office only feels alive if people share, but the spec says sharing is the session owner's choice. Each window shows Sam launching his first task console after the Office arrives.</p>
+<div class="opts">
+ <div class="opt sel"><div class="oh"><span class="l">A</span><b>Ask once, then remember</b><span class="rec">Recommended</span></div>
+  <p>The first launch asks with a clear choice. The answer becomes Sam's default, and the strip always shows the current state.</p>
+  <div class="win"><div class="strip"><span class="tool"><i></i>Claude Code</span><span>task/expired-invite-retry</span><span class="sp"></span><span class="private">Private</span></div><div class="term">&gt; Task: Expired invite retry…</div>
+   <div class="dlg"><b>Show this console in the Office?</b><p>Teammates see your task and a short, view-only glimpse of the output. They can't type. You can change this anytime from the console strip.</p><div class="row"><button class="btn">Show in Office</button><button class="btn2">Keep private</button><span class="sp"></span><label style="font-size:12px;color:var(--muted)"><input type="checkbox" checked> Remember my choice</label></div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>An informed choice, made once</li><li>Honors "controlled by the owner"</li><li>Most people will likely say yes</li></ul></div><div class="con"><b>Trade-off</b><ul><li>One extra prompt on first launch</li></ul></div></div></div>
+ <div class="opt"><div class="oh"><span class="l">B</span><b>Shared by default</b></div>
+  <p>Consoles appear in the Office automatically. A visible "Shared" badge lets Sam turn it off.</p>
+  <div class="win"><div class="strip"><span class="tool"><i></i>Claude Code</span><span>task/expired-invite-retry</span><span class="sp"></span><span class="shared"><i></i>Shared in Office</span></div><div class="term">&gt; Task: Expired invite retry…<br>  Reading .env.local  ← visible to the team</div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>The fullest Office from day one</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Output can include secrets or private paths before Sam notices</li><li>Weakens "optional and owner-controlled"</li></ul></div></div></div>
+ <div class="opt"><div class="oh"><span class="l">C</span><b>Private by default, no prompt</b></div>
+  <p>Sam has to find the switch himself.</p>
+  <div class="win"><div class="strip"><span class="tool"><i></i>Claude Code</span><span>task/expired-invite-retry</span><span class="sp"></span><span class="private">Private</span></div><div class="term">&gt; Task: Expired invite retry…</div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Safest</li></ul></div><div class="con"><b>Trade-off</b><ul><li>The Office stays mostly empty; most people never discover sharing</li></ul></div></div></div>
+</div>
+<div class="fixed"><div><b>Always visible</b><p>The console strip shows Shared or Private at all times. One click changes it for this session.</p></div>
+<div><b>Presence is separate</b><p>Your card, task, and room show in the Office regardless. Only the console glimpse and viewer depend on sharing.</p></div>
+<div><b>Pause while sensitive</b><p>"Pause sharing" hides output for a moment, for example while a tool prints keys, then resumes.</p></div></div>
+</div>
+<script>document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)));</script>
+</body></html>
