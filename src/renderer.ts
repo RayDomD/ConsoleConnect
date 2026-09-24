@@ -65,6 +65,8 @@ let currentInvitationLink = '';
 let invitationStatus = '';
 let showInviteForm = false;
 let assignMenuOpen = false;
+// Decisions whose commit field is showing: prepared this session, or opened with Enter commit.
+const commitFieldDecisionIds = new Set<string>();
 let terminalTaskId: string | null = null;
 let terminalOutput = '';
 let terminalSessionActive = false;
@@ -354,6 +356,14 @@ function taskActions(task: Task) {
   return '';
 }
 
+function decisionStep(decisionId: string, owner: boolean) {
+  const id = escape(decisionId);
+  if (owner && !commitFieldDecisionIds.has(decisionId)) {
+    return `<button data-action="prepare-decision" data-decision="${id}">Prepare Markdown</button><small>Next: push it, then paste the commit to approve. <button class="text-button inline-link" data-action="enter-decision-commit" data-decision="${id}">Enter commit</button></small>`;
+  }
+  return `<label>Pushed commit SHA<input data-commit-for="${id}" autocomplete="off"></label><button data-action="approve-decision" data-decision="${id}">Verify and approve</button>`;
+}
+
 function taskBody(task: Task) {
   const assignee = snapshot!.members.find(member => member.id === task.assigneeId);
   const status = task.status.replaceAll('_', ' ');
@@ -433,7 +443,7 @@ function render() {
   const selected = snapshot.tasks.find(task => task.id === selectedTaskId) ?? snapshot.tasks[0];
   const me = snapshot.members.find(member => member.id === snapshot!.memberId);
   const unread = unreadTeamMessages();
-  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(task.status.replaceAll('_', ' '))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(me?.role)}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail"><span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(member.role)}</small></div></div>`).join('')}${connection?.shareUrl ? `<p class="rail-note">Host address<br><strong>${escape(connection.shareUrl)}</strong></p>` : ''}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(task.status.replaceAll('_', ' '))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(me?.role)}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(member.role)}</small></div></div>`).join('')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
   document.querySelector('.desk-content')?.classList.toggle('console-active', taskTab === 'console' && !showWorkspaceChat);
   document.querySelector('.topbar div')!.innerHTML = `<button class="secondary topbar-chat" data-action="open-chat-drawer">Chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button><button class="text-button" data-action="disconnect">Projects</button>`;
   if (me?.role !== 'owner') document.querySelector('.invite')?.remove();
@@ -508,7 +518,7 @@ function render() {
   if (notice && loadPending(localStorage).some(item => item.workspaceId === snapshot!.workspace.id && item.memberId === snapshot!.memberId)) {
     document.querySelector('.notice')?.insertAdjacentHTML('beforeend', '<button class="secondary" data-action="discard-pending">Discard oldest saved update</button>');
   }
-  document.querySelector('.right-rail')!.insertAdjacentHTML('beforeend', `<section class="decisions"><span class="section-label">Decisions</span>${snapshot.decisions.map(decision => `<div class="decision"><strong>${escape(decision.title)}</strong><small>${escape(decision.status)}</small><p>${escape(decision.body)}</p>${decision.documentCommit ? `<small>Commit ${escape(decision.documentCommit.slice(0, 12))}</small>` : ''}${decision.status === 'proposed' && me?.role !== 'contributor' ? `${me?.role === 'owner' ? `<button class="secondary" data-action="prepare-decision" data-decision="${decision.id}">Prepare Markdown</button>` : ''}<label>Pushed commit SHA<input data-commit-for="${decision.id}" autocomplete="off"></label><button class="secondary" data-action="approve-decision" data-decision="${decision.id}">Verify and approve</button>` : ''}</div>`).join('')}<button class="secondary" data-action="propose-decision">Propose decision</button></section>`);
+  document.querySelector('.right-rail')!.insertAdjacentHTML('beforeend', `<section class="decisions"><div class="section-head"><span class="section-label">Decisions</span><button class="text-button" data-action="propose-decision">+ Propose</button></div>${snapshot.decisions.map(decision => `<div class="decision"><div class="decision-head"><strong>${escape(decision.title)}</strong><span class="decision-status decision-status-${decision.status}">${escape(decision.status.charAt(0).toUpperCase() + decision.status.slice(1))}</span></div><p>${escape(decision.body)}</p>${decision.documentCommit ? `<small>Commit ${escape(decision.documentCommit.slice(0, 12))}</small>` : ''}${decision.status === 'proposed' && me?.role !== 'contributor' ? decisionStep(decision.id, me?.role === 'owner') : ''}</div>`).join('')}</section>`);
   if (showChatDrawer && !showWorkspaceChat) app.insertAdjacentHTML('beforeend', `<aside class="chat-drawer" aria-label="Team chat drawer">${chatRoomMarkup(true)}</aside>`);
   if (chatToast && !showChatDrawer && !showWorkspaceChat) {
     const author = snapshot.members.find(member => member.id === chatToast!.message.authorId)?.name ?? 'Teammate';
@@ -799,10 +809,17 @@ app.addEventListener('click', async event => {
       const active = connection!;
       const access = active.mode === 'supabase' ? { ...active, token: await hostedAccessToken(active) } : active;
       const path = await window.consoleConnect.prepareDecision({ ...access, decisionId: button.dataset.decision!, repositoryPath });
+      commitFieldDecisionIds.add(button.dataset.decision!);
       notice = `Prepared ${path}. Commit and push it, then enter the commit SHA to make this decision official.`;
       render();
       return;
     }
+    if (action === 'enter-decision-commit') {
+      commitFieldDecisionIds.add(button.dataset.decision!); render();
+      document.querySelector<HTMLInputElement>(`[data-commit-for="${button.dataset.decision}"]`)?.focus();
+      return;
+    }
+    if (action === 'copy-host-address') { await window.consoleConnect.copyText(button.dataset.address!); notice = 'Host address copied.'; render(); return; }
     if (action === 'approve-decision') {
       const decisionId = button.dataset.decision!;
       const commitSha = (document.querySelector(`[data-commit-for="${decisionId}"]`) as HTMLInputElement).value.trim();

@@ -182,6 +182,10 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--color-ac
 .menu-item:hover,.menu-item:focus-visible{background:var(--color-selection)}
 .menu-item .avatar{width:22px;height:22px;font-size:11px;font-weight:700}
 
+/* Right rail: host status line (P3) */
+.host-status{display:grid;grid-template-columns:8px minmax(0,1fr);align-items:center;column-gap:8px;margin:0 0 28px;font-size:12px}
+.host-status .text-button{grid-column:2;justify-self:start;padding:4px 0;font-size:12px;font-weight:500;text-decoration:underline;text-underline-offset:3px}
+
 /* Shell: locked to the window on desktop widths; only inner regions scroll */
 @media(min-width:901px){
 .workspace{height:100vh;min-height:0}

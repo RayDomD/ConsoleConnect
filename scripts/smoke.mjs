@@ -144,9 +144,11 @@ try {
   }
   if (!decisionId) throw new Error('Decision proposal did not reach the host.');
   for (let attempt = 0; attempt < 30; attempt++) {
-    if (await evaluate("Boolean(document.querySelector('.decision input[data-commit-for]'))")) break;
+    if (await evaluate("Boolean(document.querySelector('.decision [data-action=enter-decision-commit]'))")) break;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
+  if (await evaluate("Boolean(document.querySelector('.decision input[data-commit-for]'))")) throw new Error('Commit field showed before the decision was prepared.');
+  await evaluate("document.querySelector('.decision [data-action=enter-decision-commit]').click()");
   if (!(await evaluate("document.querySelector('.decision input[data-commit-for]')?.labels?.[0]?.textContent?.includes('Pushed commit SHA')"))) {
     throw new Error('Decision commit field has no visible label.');
   }
