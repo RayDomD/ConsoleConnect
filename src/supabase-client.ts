@@ -1,4 +1,5 @@
 import { createClient, type RealtimeChannel, type SupabaseClient } from '@supabase/supabase-js';
+import { oauthCallbackUrl } from './oauth';
 
 export interface SupabaseConnection {
   mode: 'supabase'; projectUrl: string; publishableKey: string; workspaceId: string;
@@ -15,7 +16,8 @@ function getClient(projectUrl: string, publishableKey: string) {
   if (!publishableKey.trim()) throw new Error('Enter the Supabase publishable key.');
   if (!active || active.projectUrl !== url.origin || active.publishableKey !== publishableKey) {
     active = { projectUrl: url.origin, publishableKey,
-      client: createClient(url.origin, publishableKey, { auth: { persistSession: true, autoRefreshToken: true } }) };
+      client: createClient(url.origin, publishableKey, { auth: { persistSession: true, autoRefreshToken: true,
+        flowType: 'pkce', detectSessionInUrl: false } }) };
   }
   return active.client;
 }
@@ -34,6 +36,37 @@ async function session(projectUrl: string, publishableKey: string) {
 
 export async function hostedAccessToken(connection: SupabaseConnection) {
   return (await session(connection.projectUrl, connection.publishableKey)).access_token;
+}
+
+export async function hostedSignIn(projectUrl: string, publishableKey: string, provider: 'github' | 'google',
+  openBrowser: (url: string) => Promise<string>) {
+  const client = getClient(projectUrl, publishableKey);
+  const existing = await client.auth.getSession();
+  if (existing.error) throw existing.error;
+  if (existing.data.session?.user.identities?.some(identity => identity.provider === provider)) {
+    return existing.data.session.user.user_metadata.name ?? existing.data.session.user.email ?? 'Signed in';
+  }
+  const options = { redirectTo: oauthCallbackUrl, skipBrowserRedirect: true };
+  const started = existing.data.session
+    ? await client.auth.linkIdentity({ provider, options })
+    : await client.auth.signInWithOAuth({ provider, options });
+  if (started.error || !started.data.url) throw started.error ?? new Error('Could not start sign-in. Check this provider in Supabase.');
+  const callback = new URL(await openBrowser(started.data.url));
+  const code = callback.searchParams.get('code');
+  if (!code) throw new Error(callback.searchParams.get('error_description') ?? 'Sign-in did not return a code.');
+  const exchanged = await client.auth.exchangeCodeForSession(code);
+  if (exchanged.error || !exchanged.data.user) throw exchanged.error ?? new Error('Could not finish sign-in.');
+  const user = exchanged.data.user;
+  return user.user_metadata.name ?? user.user_metadata.full_name ?? user.user_metadata.user_name ?? user.email ?? 'Signed in';
+}
+
+export async function hostedProjects(projectUrl: string, publishableKey: string) {
+  const existing = await getClient(projectUrl, publishableKey).auth.getSession();
+  if (existing.error) throw existing.error;
+  if (!existing.data.session) return [];
+  const response = await hostedRequest({ projectUrl, publishableKey, path: '/workspaces' });
+  if (response.status >= 400) throw new Error(response.data.error ?? 'Could not load your hosted projects.');
+  return response.data.workspaces as Array<{ id: string; name: string; repository: string }>;
 }
 
 export async function hostedRequest(input: { projectUrl: string; publishableKey: string; workspaceId?: string;

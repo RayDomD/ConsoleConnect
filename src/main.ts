@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
 import { join } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import type { IPty } from 'node-pty';
@@ -8,6 +8,9 @@ import type { Snapshot, Tool } from './coordination';
 import { prepareDecisionFile } from './decisions';
 import { privateVpnAddress } from './network';
 import { providerLaunch } from './providers';
+import { resolveLinkedRepository } from './local-repository';
+import { oauthCallbackUrl } from './oauth';
+import { receiveOAuthCallback } from './oauth-callback';
 
 let hosted: Awaited<ReturnType<typeof startHost>> | null = null;
 type WorkspaceConnection = { url: string; token: string; mode?: 'local' } | {
@@ -17,6 +20,7 @@ type LocalSession = { terminal: IPty; url: string; token: string; hosted: boolea
 const sessions = new Map<string, LocalSession>();
 const terminalWatches = new Map<string, AbortController>();
 let workspaceWatch: AbortController | null = null;
+let oauthInProgress = false;
 async function terminalRequest(session: LocalSession, taskId: string, operation: 'share' | 'output', body: object) {
   if (session.hosted) throw new Error('Terminal sharing is not available for hosted workspaces yet.');
   const response = await fetch(new URL(`/terminal/${taskId}/${operation}`, session.url), {
@@ -132,6 +136,46 @@ ipcMain.handle('choose-repository', async () => {
   return result.canceled ? null : result.filePaths[0];
 });
 
+ipcMain.handle('copy-text', (_event, value: string) => clipboard.writeText(value));
+
+ipcMain.handle('notify-team-chat', (event, input: { title: string; body: string }) => {
+  if (!Notification.isSupported()) return false;
+  const window = BrowserWindow.fromWebContents(event.sender);
+  const notification = new Notification({ title: String(input.title).slice(0, 160),
+    body: String(input.body).slice(0, 240) });
+  notification.on('click', () => {
+    window?.show();
+    window?.focus();
+    if (!event.sender.isDestroyed()) event.sender.send('open-team-chat-notification');
+  });
+  notification.show();
+  return true;
+});
+
+ipcMain.handle('open-oauth', async (_event, input: { projectUrl: string; url: string }) => {
+  const project = new URL(input.projectUrl);
+  const authorization = new URL(input.url);
+  const redirectTo = authorization.searchParams.get('redirect_to');
+  let redirect: URL | null = null;
+  try { if (redirectTo) redirect = new URL(redirectTo); } catch { /* Reject malformed redirects below. */ }
+  const localProject = project.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(project.hostname);
+  if ((!localProject && project.protocol !== 'https:') || authorization.origin !== project.origin
+    || !redirect || `${redirect.origin}${redirect.pathname}` !== oauthCallbackUrl
+    || !['/auth/v1/authorize', '/auth/v1/user/identities/authorize'].includes(authorization.pathname)) {
+    throw new Error('The sign-in address does not match this Supabase project.');
+  }
+  if (oauthInProgress) throw new Error('Finish the current sign-in first.');
+  oauthInProgress = true;
+  try {
+    return await receiveOAuthCallback(() => shell.openExternal(authorization.toString()));
+  } finally {
+    oauthInProgress = false;
+  }
+});
+
+ipcMain.handle('validate-repository', (_event, input: { repositoryPath: string; workspaceRepository: string }) =>
+  resolveLinkedRepository(input.repositoryPath, input.workspaceRepository));
+
 ipcMain.handle('prepare-decision', async (_event, input: WorkspaceConnection & { decisionId: string; repositoryPath: string }) => {
   if (input.mode !== 'supabase' && (!hosted || input.url !== hosted.url)) throw new Error('Prepare decision files on the host computer.');
   const response = await workspaceFetch(input, '/state');
@@ -149,7 +193,9 @@ ipcMain.handle('run-task', async (event, input: WorkspaceConnection & { taskId: 
   if (!stateResponse.ok) throw new Error('Reconnect to the workspace before starting work.');
   const state = await stateResponse.json() as Snapshot;
   const task = state.tasks.find(item => item.id === input.taskId);
-  if (!task || task.assigneeId !== state.memberId || task.status !== 'ready') throw new Error('Only the approved recipient can start this task.');
+  if (!task || task.assigneeId !== state.memberId || !['ready', 'running', 'changes_requested'].includes(task.status)) {
+    throw new Error('Only the approved recipient can run a tool for this task.');
+  }
   const directory = await prepareWorktree(input.repositoryPath, state.workspace.repository, task.id, join(app.getPath('userData'), 'worktrees'));
   const launch = providerLaunch(input.tool, process.env.CONSOLE_CONNECT_TEST_PROVIDER_VERSION === '1');
   const terminal = (require('node-pty') as typeof import('node-pty')).spawn(launch.file, launch.args, { cwd: directory, cols: 100, rows: 30,
@@ -169,9 +215,11 @@ ipcMain.handle('run-task', async (event, input: WorkspaceConnection & { taskId: 
     if (session.shared) void terminalRequest(session, task.id, 'share', { enabled: false }).catch(() => {});
     if (!event.sender.isDestroyed()) event.sender.send('terminal-exit', { taskId: task.id, exitCode: result.exitCode });
   });
-  const started = await workspaceFetch(input, '/commands',
-    { id: crypto.randomUUID(), type: 'start-task', taskId: task.id, revision: task.revision, tool: input.tool });
-  if (!started.ok) { terminal.kill(); sessions.delete(task.id); throw new Error('The task changed before the terminal could start. Refresh it.'); }
+  if (task.status === 'ready') {
+    const started = await workspaceFetch(input, '/commands',
+      { id: crypto.randomUUID(), type: 'start-task', taskId: task.id, revision: task.revision, tool: input.tool });
+    if (!started.ok) { terminal.kill(); sessions.delete(task.id); throw new Error('The task changed before the terminal could start. Refresh it.'); }
+  }
   return { directory };
 });
 

@@ -27,6 +27,7 @@ create role anon nologin;
 create role authenticated nologin;
 create role service_role nologin bypassrls;
 create schema auth;
+create table auth.identities (user_id uuid not null, provider text not null, provider_id text not null);
 create function auth.uid() returns uuid language sql stable as $$
   select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid;
 $$;
@@ -40,6 +41,8 @@ create publication supabase_realtime;
   if ($LASTEXITCODE -ne 0) { throw 'Supabase test roles failed.' }
   & (Join-Path $pgBin 'psql.exe') -v ON_ERROR_STOP=1 -f (Join-Path (Get-Location).Path 'supabase\migrations\20260923120000_console_connect.sql') | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Supabase migration failed.' }
+  & (Join-Path $pgBin 'psql.exe') -v ON_ERROR_STOP=1 -f (Join-Path (Get-Location).Path 'supabase\migrations\20260923130000_github_bound_invites.sql') | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'GitHub invitation migration failed.' }
   $test = @'
 select public.console_create_workspace('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
   '33333333-3333-4333-8333-333333333333', 'Team', 'https://github.com/example/repo', 'Alex');
@@ -47,17 +50,32 @@ insert into public.console_invites(code_hash, workspace_id, role, expires_at)
   values ('test-hash', '11111111-1111-4111-8111-111111111111', 'reviewer', now() + interval '1 hour');
 select public.console_consume_invite('test-hash', '44444444-4444-4444-8444-444444444444',
   '55555555-5555-4555-8555-555555555555', 'Sam');
+insert into public.console_invites(code_hash, workspace_id, role, expires_at, github_user_id)
+  values ('bound-hash', '11111111-1111-4111-8111-111111111111', 'contributor', now() + interval '1 hour', '12345');
+do $$ begin
+  begin
+    perform public.console_consume_invite('bound-hash', '66666666-6666-4666-8666-666666666666',
+      '77777777-7777-4777-8777-777777777777', 'Wrong');
+    raise exception 'Wrong GitHub account joined.';
+  exception when others then
+    if sqlerrm <> 'GitHub account does not match invitation.' then raise; end if;
+  end;
+end $$;
+insert into auth.identities(user_id, provider, provider_id)
+  values ('66666666-6666-4666-8666-666666666666', 'github', '12345');
+select public.console_consume_invite('bound-hash', '66666666-6666-4666-8666-666666666666',
+  '77777777-7777-4777-8777-777777777777', 'Contributor');
 do $$
 declare v_state jsonb;
 begin
   select state into v_state from public.console_workspaces where id = '11111111-1111-4111-8111-111111111111';
-  if v_state->>'revision' <> '2' or jsonb_array_length(v_state->'members') <> 2 then
+  if v_state->>'revision' <> '3' or jsonb_array_length(v_state->'members') <> 3 then
     raise exception 'Join state was not committed.';
   end if;
   if public.console_compare_and_swap('11111111-1111-4111-8111-111111111111', 1,
     jsonb_set(v_state, '{revision}', '2'::jsonb)) then raise exception 'Stale update succeeded.'; end if;
-  if not public.console_compare_and_swap('11111111-1111-4111-8111-111111111111', 2,
-    jsonb_set(v_state, '{revision}', '3'::jsonb)) then raise exception 'Current update failed.'; end if;
+  if not public.console_compare_and_swap('11111111-1111-4111-8111-111111111111', 3,
+    jsonb_set(v_state, '{revision}', '4'::jsonb)) then raise exception 'Current update failed.'; end if;
 end;
 $$;
 set role authenticated;
@@ -65,7 +83,7 @@ set request.jwt.claim.sub = '44444444-4444-4444-8444-444444444444';
 do $$ begin
   if (select count(*) from public.console_revisions) <> 1 then raise exception 'Member cannot read revisions.'; end if;
 end $$;
-set request.jwt.claim.sub = '66666666-6666-4666-8666-666666666666';
+set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
 do $$ begin
   if (select count(*) from public.console_revisions) <> 0 then raise exception 'Nonmember can read revisions.'; end if;
 end $$;

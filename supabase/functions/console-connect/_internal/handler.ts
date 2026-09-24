@@ -5,6 +5,7 @@ const projectUrl = Deno.env.get('SUPABASE_URL')!;
 const publishableKey = Deno.env.get('SUPABASE_PUBLISHABLE_KEY') ?? Deno.env.get('SUPABASE_ANON_KEY')!;
 const serviceKey = Deno.env.get('SUPABASE_SECRET_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const githubToken = Deno.env.get('GITHUB_TOKEN');
+const githubInviteToken = Deno.env.get('GITHUB_INVITE_TOKEN');
 const admin = createClient(projectUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
 function githubRepository(repository: string) {
@@ -25,6 +26,24 @@ async function githubFetch(url: string, init?: RequestInit) {
 }
 
 const providers = {
+  async resolveGithubUser(username: string) {
+    let user: { id: number; login: string };
+    try { user = await githubFetch(`https://api.github.com/users/${encodeURIComponent(username)}`) as typeof user; }
+    catch (error) { if ((error as Error).message === 'GitHub HTTP 404') return null; throw error; }
+    if (!Number.isSafeInteger(user.id) || !user.login) throw new Error('GitHub account not found.');
+    return { id: String(user.id), login: user.login };
+  },
+  async inviteCollaborator(repository: string, username: string): Promise<'pending' | 'already-member'> {
+    if (!githubInviteToken) throw new Error('Configure GITHUB_INVITE_TOKEN for repository invitations.');
+    const repo = githubRepository(repository);
+    const response = await fetch(`${repo.api}/repos/${encodeURIComponent(repo.owner)}/${encodeURIComponent(repo.name)}/collaborators/${encodeURIComponent(username)}`, {
+      method: 'PUT', headers: { accept: 'application/vnd.github+json', authorization: `Bearer ${githubInviteToken}`,
+        'user-agent': 'Console-Connect', 'X-GitHub-Api-Version': '2022-11-28' },
+    });
+    if (response.status === 201) return 'pending';
+    if (response.status === 204) return 'already-member';
+    throw new Error(`GitHub collaborator invitation failed: HTTP ${response.status}`);
+  },
   async verifyDecision(repository: string, decision: { id: string; title: string; body: string; proposedBy: string;
     createdAt: string; status: 'proposed' | 'official' | 'superseded'; supersedesId?: string; affectedTaskIds: string[] }, commitSha: string) {
     const repo = githubRepository(repository);
@@ -54,12 +73,25 @@ const store = {
       p_repository: input.repository, p_owner_name: input.owner });
     if (error) throw error;
   },
-  async join(input: { codeHash: string; userId: string; memberId: string; name: string }) {
+  async join(input: { codeHash: string; userId: string; memberId: string; name: string; githubUserId?: string }) {
     const { data, error } = await admin.rpc('console_consume_invite', { p_code_hash: input.codeHash,
       p_user_id: input.userId, p_member_id: input.memberId, p_name: input.name });
     if (error?.message.includes('Invitation expired or used.') || error?.message.includes('Already a member.')) return null;
+    if (error?.message.includes('GitHub account does not match invitation.')) throw new Error('Sign in with the invited GitHub account before joining.');
     if (error) throw error;
     return data as string;
+  },
+  async list(userId: string) {
+    const memberships = await admin.from('console_members').select('workspace_id').eq('user_id', userId);
+    if (memberships.error) throw memberships.error;
+    const ids = memberships.data.map(item => item.workspace_id as string);
+    if (!ids.length) return [];
+    const workspaces = await admin.from('console_workspaces').select('id,state').in('id', ids);
+    if (workspaces.error) throw workspaces.error;
+    return workspaces.data.map(item => {
+      const state = item.state as { workspace: { name: string; repository: string } };
+      return { id: item.id as string, name: state.workspace.name, repository: state.workspace.repository };
+    });
   },
   async read(workspaceId: string, userId: string) {
     const membership = await admin.from('console_members').select('member_id').eq('workspace_id', workspaceId).eq('user_id', userId).maybeSingle();
@@ -69,9 +101,9 @@ const store = {
     if (workspace.error) throw workspace.error;
     return { state: workspace.data.state, memberId: membership.data.member_id as string };
   },
-  async invite(input: { workspaceId: string; codeHash: string; role: 'reviewer' | 'contributor'; expiresAt: string }) {
+  async invite(input: { workspaceId: string; codeHash: string; role: 'reviewer' | 'contributor'; expiresAt: string; githubUserId?: string }) {
     const { error } = await admin.from('console_invites').insert({ code_hash: input.codeHash,
-      workspace_id: input.workspaceId, role: input.role, expires_at: input.expiresAt });
+      workspace_id: input.workspaceId, role: input.role, expires_at: input.expiresAt, github_user_id: input.githubUserId ?? null });
     if (error) throw error;
   },
   async compareAndSwap(workspaceId: string, revision: number, next: unknown) {
@@ -100,6 +132,7 @@ export async function serve(request: Request) {
     catch { return Response.json({ error: 'Send valid JSON.' }, { status: 400, headers }); }
   }
   const result = await handleHostedRequest({ method: request.method, path, userId: data.user.id,
+    githubUserId: data.user.identities?.find(identity => identity.provider === 'github')?.identity_data?.sub,
     workspaceId: url.searchParams.get('workspaceId'), body }, store, providers);
   return Response.json(result.data, { status: result.status, headers });
 }

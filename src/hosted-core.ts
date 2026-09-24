@@ -7,19 +7,22 @@ export { renderDecisionDocument } from './decision-document';
 
 export interface HostedStore {
   create(input: { workspaceId: string; memberId: string; userId: string; name: string; repository: string; owner: string }): Promise<void>;
-  join(input: { codeHash: string; userId: string; memberId: string; name: string }): Promise<string | null>;
+  join(input: { codeHash: string; userId: string; memberId: string; name: string; githubUserId?: string }): Promise<string | null>;
+  list(userId: string): Promise<Array<{ id: string; name: string; repository: string }>>;
   read(workspaceId: string, userId: string): Promise<{ state: WorkspaceState; memberId: string } | null>;
-  invite(input: { workspaceId: string; codeHash: string; role: 'reviewer' | 'contributor'; expiresAt: string }): Promise<void>;
+  invite(input: { workspaceId: string; codeHash: string; role: 'reviewer' | 'contributor'; expiresAt: string; githubUserId?: string }): Promise<void>;
   compareAndSwap(workspaceId: string, revision: number, next: WorkspaceState): Promise<boolean>;
 }
 
 export interface HostedProviders {
   verifyDecision(repository: string, decision: Decision, commitSha: string): Promise<boolean>;
   lookupPullRequest(url: string): Promise<PullRequestStatus>;
+  resolveGithubUser(username: string): Promise<{ id: string; login: string } | null>;
+  inviteCollaborator(repository: string, username: string): Promise<'pending' | 'already-member'>;
 }
 
 export interface HostedRequest {
-  method: string; path: string; userId: string; workspaceId?: string | null; body?: unknown;
+  method: string; path: string; userId: string; githubUserId?: string; workspaceId?: string | null; body?: unknown;
 }
 
 async function digest(value: string) {
@@ -35,7 +38,9 @@ function invitationCode() {
 const workspaceIdSchema = z.string().uuid();
 const createSchema = z.object({ name: z.string().trim().min(1).max(160), repository: z.string().trim().min(1), owner: z.string().trim().min(1).max(80) });
 const joinSchema = z.object({ code: z.string().min(1).max(100), name: z.string().trim().min(1).max(80) });
-const inviteSchema = z.object({ role: z.enum(['reviewer', 'contributor']) });
+const inviteSchema = z.object({ role: z.enum(['reviewer', 'contributor']),
+  githubUsername: z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/).optional(),
+  repositoryAccess: z.boolean().default(false) });
 
 export async function handleHostedRequest(request: HostedRequest, store: HostedStore, providers: HostedProviders): Promise<{ status: number; data: unknown }> {
   try {
@@ -57,9 +62,12 @@ export async function handleHostedRequest(request: HostedRequest, store: HostedS
     if (request.method === 'POST' && request.path === '/join') {
       const input = joinSchema.parse(request.body);
       const workspaceId = await store.join({ codeHash: await digest(input.code), userId: request.userId,
-        memberId: crypto.randomUUID(), name: input.name });
+        memberId: crypto.randomUUID(), name: input.name, githubUserId: request.githubUserId });
       if (!workspaceId) throw new RequestError(403, 'This invitation has expired or has already been used.');
       return { status: 200, data: { workspaceId } };
+    }
+    if (request.method === 'GET' && request.path === '/workspaces') {
+      return { status: 200, data: { workspaces: await store.list(request.userId) } };
     }
     const workspaceId = workspaceIdSchema.parse(request.workspaceId);
     const current = await store.read(workspaceId, request.userId);
@@ -72,10 +80,20 @@ export async function handleHostedRequest(request: HostedRequest, store: HostedS
     if (request.method === 'POST' && request.path === '/invites') {
       if (actor.role !== 'owner') throw new RequestError(403, 'Only the host can invite members.');
       const input = inviteSchema.parse(request.body);
+      if (input.repositoryAccess && (input.role !== 'contributor' || !input.githubUsername)) {
+        throw new RequestError(400, 'Repository access requires a contributor and GitHub username.');
+      }
+      const githubUser = input.githubUsername ? await providers.resolveGithubUser(input.githubUsername) : null;
+      if (input.githubUsername && !githubUser) throw new RequestError(400, 'GitHub username not found.');
       const code = invitationCode();
       await store.invite({ workspaceId, codeHash: await digest(code), role: input.role,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString() });
-      return { status: 200, data: { code } };
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), githubUserId: githubUser?.id });
+      let repositoryInvite: 'not-requested' | 'pending' | 'already-member' | 'failed' = 'not-requested';
+      if (input.repositoryAccess && githubUser) {
+        try { repositoryInvite = await providers.inviteCollaborator(current.state.workspace.repository, githubUser.login); }
+        catch { repositoryInvite = 'failed'; }
+      }
+      return { status: 200, data: { code, githubUsername: githubUser?.login, repositoryInvite } };
     }
     if (request.method === 'POST' && request.path === '/commands') {
       const command = commandSchema.parse(request.body);
@@ -137,6 +155,9 @@ export async function handleHostedRequest(request: HostedRequest, store: HostedS
   } catch (error) {
     if (error instanceof RequestError) return { status: error.status, data: { error: error.message } };
     if (error instanceof z.ZodError) return { status: 400, data: { error: 'The update has invalid fields.' } };
+    if (error instanceof Error && error.message === 'Sign in with the invited GitHub account before joining.') {
+      return { status: 403, data: { error: error.message } };
+    }
     return { status: 503, data: { error: 'The hosted workspace is unavailable.' } };
   }
 }

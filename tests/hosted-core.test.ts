@@ -6,7 +6,7 @@ import type { WorkspaceState } from '../src/coordination/_internal/protocol';
 function memoryHostedStore(): HostedStore {
   const workspaces = new Map<string, WorkspaceState>();
   const memberships = new Map<string, string>();
-  const invites = new Map<string, { workspaceId: string; role: 'reviewer' | 'contributor'; expiresAt: string }>();
+  const invites = new Map<string, { workspaceId: string; role: 'reviewer' | 'contributor'; expiresAt: string; githubUserId?: string }>();
   return {
     async create(input) {
       const state: WorkspaceState = { workspace: { id: input.workspaceId, name: input.name, repository: input.repository },
@@ -18,6 +18,9 @@ function memoryHostedStore(): HostedStore {
     async join(input) {
       const invite = invites.get(input.codeHash);
       if (!invite || new Date(invite.expiresAt).getTime() < Date.now()) return null;
+      if (invite.githubUserId && invite.githubUserId !== input.githubUserId) {
+        throw new Error('Sign in with the invited GitHub account before joining.');
+      }
       if (memberships.has(`${invite.workspaceId}:${input.userId}`)) return null;
       const state = workspaces.get(invite.workspaceId)!;
       state.members.push({ id: input.memberId, name: input.name, role: invite.role });
@@ -25,6 +28,10 @@ function memoryHostedStore(): HostedStore {
       memberships.set(`${invite.workspaceId}:${input.userId}`, input.memberId);
       invites.delete(input.codeHash);
       return invite.workspaceId;
+    },
+    async list(userId) {
+      return [...workspaces.entries()].filter(([id]) => memberships.has(`${id}:${userId}`))
+        .map(([id, state]) => ({ id, name: state.workspace.name, repository: state.workspace.repository }));
     },
     async read(workspaceId, userId) {
       const memberId = memberships.get(`${workspaceId}:${userId}`);
@@ -43,7 +50,65 @@ function memoryHostedStore(): HostedStore {
 const providers: HostedProviders = {
   verifyDecision: async () => true,
   lookupPullRequest: async url => ({ url, state: 'OPEN', reviewDecision: null, mergedAt: null }),
+  resolveGithubUser: async username => ({ id: '12345', login: username }),
+  inviteCollaborator: async () => 'pending',
 };
+
+test('hosted chat applies the same reply, edit, and unsend rules', async () => {
+  const store = memoryHostedStore();
+  const ownerUser = randomUUID();
+  const samUser = randomUUID();
+  const create = await handleHostedRequest({ method: 'POST', path: '/create', userId: ownerUser,
+    body: { name: 'Team', repository: 'https://github.com/example/repo', owner: 'Alex' } }, store, providers);
+  const workspaceId = (create.data as { workspaceId: string }).workspaceId;
+  const invite = await handleHostedRequest({ method: 'POST', path: '/invites', userId: ownerUser, workspaceId,
+    body: { role: 'reviewer' } }, store, providers);
+  await handleHostedRequest({ method: 'POST', path: '/join', userId: samUser,
+    body: { code: (invite.data as { code: string }).code, name: 'Sam' } }, store, providers);
+  const send = (userId: string, command: object) => handleHostedRequest({ method: 'POST', path: '/commands',
+    userId, workspaceId, body: { id: randomUUID(), ...command } }, store, providers);
+  const messageId = randomUUID();
+  expect((await handleHostedRequest({ method: 'POST', path: '/commands', userId: ownerUser, workspaceId,
+    body: { id: messageId, type: 'post-message', body: 'Please review' } }, store, providers)).status).toBe(200);
+  expect((await send(samUser, { type: 'edit-message', messageId, version: 1, body: 'Changed' })).status).toBe(403);
+  expect((await send(samUser, { type: 'post-message', replyToId: messageId, body: 'On it' })).status).toBe(200);
+  expect((await send(ownerUser, { type: 'edit-message', messageId, version: 1, body: 'Please review today' })).status).toBe(200);
+  expect((await send(ownerUser, { type: 'unsend-message', messageId, version: 2 })).status).toBe(200);
+  const state = await handleHostedRequest({ method: 'GET', path: '/state', userId: samUser, workspaceId }, store, providers);
+  const messages = (state.data as { messages: Array<{ id: string; body: string; deletedAt?: string; replyToId?: string }> }).messages;
+  expect(messages[0]).toMatchObject({ id: messageId, body: '' });
+  expect(messages[0]?.deletedAt).toBeTruthy();
+  expect(messages[1]?.replyToId).toBe(messageId);
+});
+
+test('GitHub-bound workspace invitations require the invited identity and report repository access separately', async () => {
+  const store = memoryHostedStore();
+  const ownerUser = randomUUID();
+  const create = await handleHostedRequest({ method: 'POST', path: '/create', userId: ownerUser,
+    body: { name: 'Team', repository: 'https://github.com/example/repo', owner: 'Alex' } }, store, providers);
+  const workspaceId = (create.data as { workspaceId: string }).workspaceId;
+  const invalid = await handleHostedRequest({ method: 'POST', path: '/invites', userId: ownerUser, workspaceId,
+    body: { role: 'reviewer', githubUsername: 'sam', repositoryAccess: true } }, store, providers);
+  expect(invalid.status).toBe(400);
+  const unknown = await handleHostedRequest({ method: 'POST', path: '/invites', userId: ownerUser, workspaceId,
+    body: { role: 'reviewer', githubUsername: 'missing' } }, store,
+    { ...providers, resolveGithubUser: async () => null });
+  expect(unknown.status).toBe(400);
+  const invite = await handleHostedRequest({ method: 'POST', path: '/invites', userId: ownerUser, workspaceId,
+    body: { role: 'contributor', githubUsername: 'sam', repositoryAccess: true } }, store, providers);
+  expect(invite.status).toBe(200);
+  expect(invite.data).toMatchObject({ githubUsername: 'sam', repositoryInvite: 'pending' });
+  const code = (invite.data as { code: string }).code;
+  const join = (githubUserId?: string) => handleHostedRequest({ method: 'POST', path: '/join',
+    userId: randomUUID(), githubUserId, body: { code, name: 'Sam' } }, store, providers);
+  expect((await join()).status).toBe(403);
+  expect((await join('wrong')).status).toBe(403);
+  expect((await join('12345')).status).toBe(200);
+  const failed = await handleHostedRequest({ method: 'POST', path: '/invites', userId: ownerUser, workspaceId,
+    body: { role: 'contributor', githubUsername: 'sam', repositoryAccess: true } }, store,
+    { ...providers, inviteCollaborator: async () => { throw new Error('unavailable'); } });
+  expect(failed.data).toMatchObject({ repositoryInvite: 'failed' });
+});
 
 test('hosted workspace shares the assignment, approval, retry, and draft privacy rules', async () => {
   const store = memoryHostedStore();
@@ -55,12 +120,18 @@ test('hosted workspace shares the assignment, approval, retry, and draft privacy
     body: { name: 'Team', repository: 'https://github.com/example/repo', owner: 'Alex' } }, store, providers);
   expect(create.status).toBe(200);
   const workspaceId = (create.data as { workspaceId: string }).workspaceId;
+  expect((await handleHostedRequest({ method: 'GET', path: '/workspaces', userId: ownerUser }, store, providers)).data)
+    .toEqual({ workspaces: [{ id: workspaceId, name: 'Team', repository: 'https://github.com/example/repo' }] });
+  expect((await handleHostedRequest({ method: 'GET', path: '/workspaces', userId: samUser }, store, providers)).data)
+    .toEqual({ workspaces: [] });
   expect((await handleHostedRequest({ method: 'GET', path: '/state', userId: samUser, workspaceId }, store, providers)).status).toBe(403);
   const invite = await handleHostedRequest({ method: 'POST', path: '/invites', userId: ownerUser, workspaceId,
     body: { role: 'reviewer' } }, store, providers);
   const code = (invite.data as { code: string }).code;
   expect((await handleHostedRequest({ method: 'POST', path: '/join', userId: samUser,
     body: { code, name: 'Sam' } }, store, providers)).status).toBe(200);
+  expect((await handleHostedRequest({ method: 'GET', path: '/workspaces', userId: samUser }, store, providers)).data)
+    .toEqual({ workspaces: [{ id: workspaceId, name: 'Team', repository: 'https://github.com/example/repo' }] });
   expect((await handleHostedRequest({ method: 'POST', path: '/join', userId: randomUUID(),
     body: { code, name: 'Other' } }, store, providers)).status).toBe(403);
   const samState = await handleHostedRequest({ method: 'GET', path: '/state', userId: samUser, workspaceId }, store, providers);
