@@ -264,6 +264,18 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if (!(await evaluate("document.body.innerText.includes('Live arrival')"))) throw new Error('Reviewer did not see the live workspace update.');
+  await evaluate(`document.querySelector('[data-task="${liveTaskId}"]').click(); document.querySelector('[data-action=toggle-assign-menu]').click()`);
+  if (!(await evaluate(`document.querySelector('.menu [data-member="${hostState.memberId}"]')?.textContent.includes('Alex')`))) throw new Error('Assign menu did not list the teammate.');
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/assign-menu.png', Buffer.from(captured.data, 'base64'));
+  }
+  await evaluate(`document.querySelector('.menu [data-member="${hostState.memberId}"]').click()`);
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if ((await hostCall('/state')).tasks.find(task => task.id === liveTaskId)?.assigneeId === hostState.memberId) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if ((await hostCall('/state')).tasks.find(task => task.id === liveTaskId)?.assigneeId !== hostState.memberId) throw new Error('Assign menu did not assign the task.');
   const incomingMessageId = crypto.randomUUID();
   await hostCall('/commands', { id: incomingMessageId, type: 'post-message', body: 'Can someone test invitation expiry?' });
   for (let attempt = 0; attempt < 30; attempt++) {

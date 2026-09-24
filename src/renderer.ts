@@ -64,6 +64,7 @@ let notice = '';
 let currentInvitationLink = '';
 let invitationStatus = '';
 let showInviteForm = false;
+let assignMenuOpen = false;
 let terminalTaskId: string | null = null;
 let terminalOutput = '';
 let terminalSessionActive = false;
@@ -338,7 +339,11 @@ async function command(task: Task | null, fields: object) {
 function taskActions(task: Task) {
   const mine = task.assigneeId === snapshot?.memberId;
   const reviewer = !mine && snapshot?.members.find(member => member.id === snapshot?.memberId)?.role !== 'contributor';
-  if (task.status === 'unassigned') return `<div class="actions"><button data-action="claim">Claim task</button><select id="assignee"><option value="">Assign to…</option>${snapshot!.members.map(member => `<option value="${member.id}">${escape(member.name)}</option>`).join('')}</select><button class="secondary" data-action="assign">Assign</button></div>`;
+  if (task.status === 'unassigned') {
+    const teammates = snapshot!.members.filter(member => member.id !== snapshot!.memberId);
+    const menu = assignMenuOpen ? `<div class="menu" role="menu" aria-label="Teammates">${teammates.map(member => `<button class="menu-item" role="menuitem" data-action="assign" data-member="${escape(member.id)}"><span class="avatar" aria-hidden="true">${escape(member.name.slice(0, 1).toUpperCase())}</span>${escape(member.name)}</button>`).join('')}</div>` : '';
+    return `<p class="action-heading">Nobody has this yet</p><div class="actions"><button data-action="claim">Claim task</button>${teammates.length ? `<span class="actions-or">or</span><div class="assign-menu"><button class="secondary" data-action="toggle-assign-menu" aria-haspopup="menu" aria-expanded="${assignMenuOpen}">Assign to teammate${chevronIcon}</button>${menu}</div>` : ''}</div>`;
+  }
   if (mine && task.status === 'awaiting_approval') return '<button data-action="approve">Approve assignment</button>';
   if (mine && task.status === 'ready') return '<button data-action="task-tab" data-tab="console">Open console</button>';
   if (mine && (task.status === 'running' || task.status === 'changes_requested')) {
@@ -386,6 +391,8 @@ function chatRoomMarkup(compact = false) {
   return `<section class="chat-room ${compact ? 'chat-room-compact' : ''}" aria-label="Team chat"><div class="chat-room-header"><div><h2>Team chat</h2><p>Questions, progress, and quick updates for everyone.</p></div>${compact ? '<button class="text-button" data-action="close-chat-drawer" aria-label="Close team chat">Close</button>' : ''}</div><div class="chat-stream" id="team-chat-stream" role="log" aria-live="polite" aria-relevant="additions">${stream || '<p class="chat-empty">No messages yet. Start the conversation.</p>'}</div><form id="workspace-message" class="chat-composer">${replyPreview}<label for="team-chat-body">Message the team</label><div class="chat-compose-row"><textarea id="team-chat-body" name="body" required maxlength="8000" placeholder="Write an update or ask a question…">${escape(chatDraft)}</textarea><button type="submit">Send</button></div></form></section>`;
 }
 
+// Lucide "chevron-down" icon (ISC license).
+const chevronIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>';
 // Lucide "plus" icon (ISC license).
 const plusIcon = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
 // Lucide "settings" icon (ISC license).
@@ -656,8 +663,16 @@ app.addEventListener('submit', async event => {
   } catch (error) { notice = (error as Error).message; render(); }
 });
 
+document.addEventListener('keydown', event => {
+  if (event.key === 'Escape' && assignMenuOpen) {
+    assignMenuOpen = false; render();
+    document.querySelector<HTMLButtonElement>('[data-action=toggle-assign-menu]')?.focus();
+  }
+});
+
 app.addEventListener('click', async event => {
   const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button');
+  if (assignMenuOpen && !(event.target as HTMLElement).closest('.assign-menu')) { assignMenuOpen = false; render(); }
   if (!button) return;
   if (button.dataset.task) {
     if (watchedTaskId && watchedTaskId !== button.dataset.task) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
@@ -821,10 +836,14 @@ app.addEventListener('click', async event => {
     if (action === 'ack-decision') await command(task, { type: 'acknowledge-decision', decisionId: button.dataset.decision });
     if (action === 'check-pr') { await request(`/pull-request/${task.id}`); await refresh(); }
     if (action === 'claim') await command(task, { type: 'claim-task' });
+    if (action === 'toggle-assign-menu') {
+      assignMenuOpen = !assignMenuOpen; render();
+      document.querySelector<HTMLButtonElement>(assignMenuOpen ? '.menu-item' : '[data-action=toggle-assign-menu]')?.focus();
+      return;
+    }
     if (action === 'assign') {
-      const assigneeId = (document.querySelector('#assignee') as HTMLSelectElement).value;
-      if (!assigneeId) throw new Error('Choose a teammate to assign.');
-      await command(task, { type: 'assign-task', assigneeId });
+      assignMenuOpen = false;
+      await command(task, { type: 'assign-task', assigneeId: button.dataset.member });
     }
     if (action === 'approve') await command(task, { type: 'approve-task' });
     if (action === 'start') {
