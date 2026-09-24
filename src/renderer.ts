@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { flushPending, loadPending, savePending } from './offline';
 import { hostedAccessToken, hostedProjects, hostedRequest, hostedSignIn, watchHostedWorkspace, type SupabaseConnection } from './supabase-client';
 import { invitationLink, parseInvitationLink } from './invitations';
+import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -65,6 +66,8 @@ let currentInvitationLink = '';
 let invitationStatus = '';
 let showInviteForm = false;
 let assignMenuOpen = false;
+// Set before a keyboard-driven selection so the next render skips the glide.
+let keyboardMove = false;
 // Decisions whose commit field is showing: prepared this session, or opened with Enter commit.
 const commitFieldDecisionIds = new Set<string>();
 let terminalTaskId: string | null = null;
@@ -432,6 +435,7 @@ function render() {
   // The shell is locked to the window, so these regions scroll themselves and innerHTML would reset them.
   const previousRegionScroll = regionScrollSelectors.map(selector => document.querySelector(selector)?.scrollTop ?? 0);
   const motion = captureMotion(app);
+  if (keyboardMove) { motion.task = null; motion.tab = null; keyboardMove = false; }
   const editInputFocused = Boolean(document.activeElement?.closest('.chat-edit'));
   const renderedTask = snapshot?.tasks.find(task => task.id === selectedTaskId) ?? snapshot?.tasks[0];
   const nextTerminalSource = renderedTask?.id === terminalTaskId ? 'local'
@@ -456,7 +460,7 @@ function render() {
   const selected = snapshot.tasks.find(task => task.id === selectedTaskId) ?? snapshot.tasks[0];
   const me = snapshot.members.find(member => member.id === snapshot!.memberId);
   const unread = unreadTeamMessages();
-  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(task.status.replaceAll('_', ' '))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(me?.role)}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(member.role)}</small></div></div>`).join('')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(task.status.replaceAll('_', ' '))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(me?.role)}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(member.role)}</small></div></div>`).join('')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
   document.querySelector('.desk-content')?.classList.toggle('console-active', taskTab === 'console' && !showWorkspaceChat);
   document.querySelector('.topbar div')!.innerHTML = `<button class="secondary topbar-chat" data-action="open-chat-drawer">Chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button><button class="text-button" data-action="disconnect">Projects</button>`;
   if (me?.role !== 'owner') document.querySelector('.invite')?.remove();
@@ -686,11 +690,64 @@ app.addEventListener('submit', async event => {
   } catch (error) { notice = (error as Error).message; render(); }
 });
 
+const clickAction = (selector: string) => document.querySelector<HTMLButtonElement>(selector)?.click();
+
+function paletteItems(): PaletteItem[] {
+  const workspace = snapshot!;
+  const tasks = workspace.tasks.map(task => ({ label: task.title, kind: 'Task',
+    icon: `<i class="status-dot status-${task.status}" aria-hidden="true"></i>`,
+    run: () => { keyboardMove = true; clickAction(`[data-task="${task.id}"]`); } }));
+  // A person jumps to the task they hold, preferring one that is running.
+  const people = workspace.members.flatMap(member => {
+    const held = workspace.tasks.filter(task => task.assigneeId === member.id);
+    const task = held.find(item => item.status === 'running') ?? held[0];
+    return task ? [{ label: member.name, kind: 'Person', hint: task.title,
+      icon: `<span class="avatar" aria-hidden="true">${escape(member.name.slice(0, 1).toUpperCase())}</span>`,
+      run: () => { keyboardMove = true; clickAction(`[data-task="${task.id}"]`); } }] : [];
+  });
+  const actions: PaletteItem[] = [
+    { label: 'New task', kind: 'Action', hint: 'N', run: () => clickAction('[data-action=new-task]') },
+    { label: 'Open team chat', kind: 'Action', hint: 'C', run: () => clickAction('[data-action=open-chat-drawer]') },
+    { label: 'Propose decision', kind: 'Action', run: () => clickAction('[data-action=propose-decision]') },
+    { label: 'Invite member', kind: 'Action', run: () => clickAction('[data-action=invite]') },
+    { label: 'Projects', kind: 'Action', run: () => clickAction('.topbar [data-action=disconnect]') },
+    { label: 'Settings', kind: 'Action', run: () => clickAction('[data-action=settings]') },
+  ];
+  return [...tasks, ...people, ...actions];
+}
+
+// Single-key shortcuts stay out of text fields and the terminal, where the keys belong to typing.
+const typingTarget = (target: EventTarget | null) => Boolean((target as HTMLElement | null)?.closest?.('input, textarea, select, [contenteditable="true"], .xterm'));
+const shortcutTabs: TaskTab[] = ['overview', 'console', 'package', 'discussion'];
+
 document.addEventListener('keydown', event => {
   if (event.key === 'Escape' && assignMenuOpen) {
     assignMenuOpen = false; render();
     document.querySelector<HTMLButtonElement>('[data-action=toggle-assign-menu]')?.focus();
+    return;
   }
+  if (paletteOpen() || view !== 'review' || !snapshot || event.defaultPrevented) return;
+  const key = event.key.toLowerCase();
+  if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === 'k') {
+    if ((event.target as HTMLElement | null)?.closest?.('.xterm')) return;
+    event.preventDefault();
+    openPalette(paletteItems());
+    return;
+  }
+  if (event.ctrlKey || event.metaKey || event.altKey || typingTarget(event.target)) return;
+  const tasks = snapshot.tasks;
+  if ((key === 'j' || key === 'k') && tasks.length) {
+    const index = Math.max(0, tasks.findIndex(task => task.id === (selectedTaskId ?? tasks[0]!.id)));
+    const next = tasks[Math.min(tasks.length - 1, Math.max(0, index + (key === 'j' ? 1 : -1)))]!;
+    keyboardMove = true;
+    clickAction(`[data-task="${next.id}"]`);
+  } else if (['1', '2', '3', '4'].includes(key)) {
+    keyboardMove = true;
+    clickAction(`[data-action=task-tab][data-tab="${shortcutTabs[Number(key) - 1]}"]`);
+  } else if (key === 'n') clickAction('[data-action=new-task]');
+  else if (key === 'c') clickAction(document.querySelector('.chat-drawer') ? '[data-action=close-chat-drawer]' : '[data-action=open-chat-drawer]');
+  else return;
+  event.preventDefault();
 });
 
 app.addEventListener('click', async event => {

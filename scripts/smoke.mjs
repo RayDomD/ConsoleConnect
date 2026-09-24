@@ -234,6 +234,40 @@ try {
       }
     }
   }
+  const press = async (key, modifiers = 0) => {
+    const code = /^[0-9]$/.test(key) ? `Digit${key}` : key.length === 1 ? `Key${key.toUpperCase()}` : key;
+    const windowsVirtualKeyCode = key === 'Enter' ? 13 : key.toUpperCase().charCodeAt(0);
+    await call('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode, modifiers, ...(key.length === 1 && !modifiers ? { text: key } : key === 'Enter' ? { text: '\r' } : {}) });
+    await call('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode, modifiers });
+  };
+  const activeTask = "document.querySelector('.task-list .active')?.dataset.task";
+  const activeTab = "document.querySelector('.task-tab.active')?.dataset.tab";
+  if (await evaluate("Boolean(document.activeElement?.closest('.xterm'))")) {
+    const before = await evaluate(activeTask);
+    await press('j');
+    if ((await evaluate(activeTask)) !== before) throw new Error('J moved tasks while typing in the terminal.');
+  }
+  await evaluate('document.activeElement?.blur()');
+  const order = JSON.parse(await evaluate("JSON.stringify([...document.querySelectorAll('.task-list [data-task]')].map(item => item.dataset.task))"));
+  const start = order.indexOf(await evaluate(activeTask));
+  await press('k');
+  if ((await evaluate(activeTask)) !== order[Math.max(0, start - 1)]) throw new Error('K did not select the previous task.');
+  await press('j');
+  if ((await evaluate(activeTask)) !== order[Math.min(order.length - 1, Math.max(0, start - 1) + 1)]) throw new Error('J did not select the next task.');
+  await press('2');
+  if ((await evaluate(activeTab)) !== 'console') throw new Error('2 did not open the console tab.');
+  await press('1');
+  if ((await evaluate(activeTab)) !== 'overview') throw new Error('1 did not open the overview tab.');
+  await press('k', 2);
+  if (!(await evaluate("document.activeElement === document.querySelector('.palette-input')"))) throw new Error('Ctrl+K did not open the palette.');
+  await call('Input.insertText', { text: 'Review' });
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/palette.png', Buffer.from(captured.data, 'base64'));
+  }
+  await press('Enter');
+  if (await evaluate("Boolean(document.querySelector('.palette'))")) throw new Error('Choosing a palette item did not close it.');
+  if (!(await evaluate("document.querySelector('.task-list .active')?.textContent.includes('Review login')"))) throw new Error('Palette did not jump to the task.');
   const taskId = crypto.randomUUID();
   const hostState = await hostCall('/state');
   await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId,
