@@ -143,6 +143,10 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if (!decisionId) throw new Error('Decision proposal did not reach the host.');
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("Boolean(document.querySelector('.decision input[data-commit-for]'))")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
   if (!(await evaluate("document.querySelector('.decision input[data-commit-for]')?.labels?.[0]?.textContent?.includes('Pushed commit SHA')"))) {
     throw new Error('Decision commit field has no visible label.');
   }
@@ -182,11 +186,12 @@ try {
       title: `Check ${tool} launch`, description: '', assigneeId: providerOwner });
     await hostCall('/commands', { id: crypto.randomUUID(), type: 'approve-task', taskId: providerTaskId, revision: 1 });
     if (tool === 'claude') {
+      // The row can render before the approval does; the tool picker only appears once the task is ready.
       for (let attempt = 0; attempt < 30; attempt++) {
-        if (await evaluate(`Boolean(document.querySelector('[data-task="${providerTaskId}"]'))`)) break;
+        if (await evaluate(`(() => { const row = document.querySelector('[data-task="${providerTaskId}"]'); if (!row) return false; row.click(); document.querySelector('[data-tab=console]')?.click(); return Boolean(document.querySelector('#tool')); })()`)) break;
         await new Promise(resolve => setTimeout(resolve, 200));
       }
-      await evaluate(`document.querySelector('[data-task="${providerTaskId}"]').click(); document.querySelector('[data-tab=console]').click(); document.querySelector('#tool').value='claude'; document.querySelector('[data-action=start]').click()`);
+      await evaluate(`document.querySelector('#tool').value='claude'; document.querySelector('[data-action=start]').click()`);
     } else {
       await evaluate(`(async () => { const c = JSON.parse(localStorage.getItem('console-connect.connection')); await window.consoleConnect.runTask({ ...c, taskId: ${JSON.stringify(providerTaskId)}, tool: ${JSON.stringify(tool)}, repositoryPath: ${JSON.stringify(repository)} }); })()`);
     }
@@ -296,8 +301,9 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if ((await hostCall('/state')).messages.find(message => message.id === replyId)?.body !== 'I tested the expired invite.') throw new Error('Edit did not reach the team chat.');
+  // Wait for the renderer's own refresh, or Unsend sends the pre-edit version and gets a 409.
   for (let attempt = 0; attempt < 30; attempt++) {
-    if (await evaluate(`Boolean(document.querySelector('[data-action=unsend-message][data-message="${replyId}"]'))`)) break;
+    if (await evaluate(`Boolean(!document.querySelector('.chat-edit') && document.querySelector('[data-action=unsend-message][data-message="${replyId}"]') && document.body.innerText.includes('I tested the expired invite.'))`)) break;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   await evaluate(`window.confirm = () => true; document.querySelector('[data-action=unsend-message][data-message="${replyId}"]').click()`);
