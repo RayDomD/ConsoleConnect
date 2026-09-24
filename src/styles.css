@@ -135,7 +135,7 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--color-ac
 .settings-button:hover svg{transform:rotate(45deg)}
 
 /* Tabs: gliding underline */
-.task-tabs{position:relative;border-bottom:0;box-shadow:inset 0 -1px 0 var(--color-border)}
+.task-tabs{position:relative;border-bottom:0;box-shadow:inset 0 -1px 0 var(--color-border);overflow-y:hidden}
 .task-tab{position:relative;z-index:1;border-bottom:0;border-radius:0;font-weight:500}
 .task-tab:hover{background:transparent;color:var(--color-text)}
 .task-tab.active{color:var(--color-text)}
