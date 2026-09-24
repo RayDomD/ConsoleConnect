@@ -35,3 +35,23 @@ test('a task cannot launch from a different repository', async () => {
   await expect(prepareWorktree(repo, 'https://github.com/example/project', randomUUID(), join(root, 'worktrees')))
     .rejects.toThrow('different repository');
 });
+
+test('a task can launch from a fork linked through upstream', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'console-connect-fork-'));
+  cleanup.push(root);
+  const repo = join(root, 'fork');
+  await git('git', ['init', repo]);
+  await git('git', ['-C', repo, 'remote', 'add', 'origin', 'git@github.com:contributor/project.git']);
+  await git('git', ['-C', repo, 'remote', 'add', 'upstream', 'https://github.com/example/project.git']);
+  await git('git', ['-C', repo, '-c', 'user.name=Test', '-c', 'user.email=test@example.com', 'commit', '--allow-empty', '-m', 'Initial']);
+  const taskId = randomUUID();
+  const path = await prepareWorktree(repo, 'https://github.com/example/project', taskId, join(root, 'worktrees'));
+  expect((await git('git', ['-C', path, 'branch', '--show-current'])).stdout.trim()).toBe(`console-connect/${taskId}`);
+});
+
+test('a task explains when the selected folder is not a Git repository', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'console-connect-plain-folder-'));
+  cleanup.push(root);
+  await expect(prepareWorktree(root, 'https://github.com/example/project', randomUUID(), join(root, 'worktrees')))
+    .rejects.toThrow('Choose a local clone or fork of the linked repository');
+});

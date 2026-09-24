@@ -2,19 +2,13 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { repositoryIdentity } from './repository';
+import { resolveLinkedRepository } from './local-repository';
 
 const run = promisify(execFile);
 
 export async function prepareWorktree(repositoryPath: string, workspaceRepository: string, taskId: string, directory: string) {
   if (!/^[0-9a-f-]{36}$/i.test(taskId)) throw new Error('Choose a valid task.');
-  const [{ stdout: rootOutput }, { stdout: remoteOutput }] = await Promise.all([
-    run('git', ['-C', repositoryPath, 'rev-parse', '--show-toplevel']),
-    run('git', ['-C', repositoryPath, 'remote', 'get-url', 'origin']),
-  ]);
-  const expected = repositoryIdentity(workspaceRepository);
-  if (!expected || repositoryIdentity(remoteOutput.trim()) !== expected) throw new Error('This folder belongs to a different repository.');
-  const root = rootOutput.trim();
+  const root = await resolveLinkedRepository(repositoryPath, workspaceRepository);
   const target = join(directory, taskId);
   const branch = `console-connect/${taskId}`;
   await mkdir(directory, { recursive: true });

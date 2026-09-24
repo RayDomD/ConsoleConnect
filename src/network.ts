@@ -1,6 +1,7 @@
 import type { NetworkInterfaceInfo } from 'node:os';
 
-const vpnName = /tailscale|wireguard|zerotier|netbird|openvpn|hamachi|vpn/i;
+const vpnName = /tailscale|wireguard|zerotier|netbird|openvpn|hamachi|radmin vpn|vpn/i;
+const radminName = /radmin vpn/i;
 
 function privateIpv4(address: string) {
   const parts = address.split('.').map(Number);
@@ -10,6 +11,11 @@ function privateIpv4(address: string) {
 }
 
 export function privateVpnAddress(interfaces: NodeJS.Dict<NetworkInterfaceInfo[]>) {
+  for (const [name, addresses] of Object.entries(interfaces)) {
+    if (!radminName.test(name)) continue;
+    const found = addresses?.find(item => item.family === 'IPv4' && !item.internal && item.address.startsWith('26.'));
+    if (found) return found.address;
+  }
   for (const [name, addresses] of Object.entries(interfaces)) {
     if (!vpnName.test(name)) continue;
     const found = addresses?.find(item => item.family === 'IPv4' && !item.internal && privateIpv4(item.address));

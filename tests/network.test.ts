@@ -8,4 +8,8 @@ test('hosting chooses only a private VPN interface, never the first public or LA
     'Tailscale Tunnel': [interfaceAt('100.101.102.103')] })).toBe('100.101.102.103');
   expect(privateVpnAddress({ Ethernet: [interfaceAt('192.168.1.20')] })).toBeNull();
   expect(privateVpnAddress({ 'Public VPN': [interfaceAt('26.207.251.197')] })).toBeNull();
+  expect(privateVpnAddress({ 'Radmin VPN': [interfaceAt('26.207.251.197')] })).toBe('26.207.251.197');
+  expect(privateVpnAddress({ 'Tailscale Tunnel': [interfaceAt('100.101.102.103')],
+    'Radmin VPN': [interfaceAt('26.207.251.197')] })).toBe('26.207.251.197');
+  expect(privateVpnAddress({ Ethernet: [interfaceAt('26.207.251.197')] })).toBeNull();
 });

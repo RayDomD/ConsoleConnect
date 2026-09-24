@@ -25,3 +25,16 @@ test('a proposed decision prepares one Markdown file in the matching local repos
   expect(await prepareDecisionFile(repo, 'https://github.com/example/project', decision)).toBe(path);
   await expect(prepareDecisionFile(repo, 'https://github.com/other/project', decision)).rejects.toThrow('different repository');
 });
+
+test('a proposed decision can be prepared in a linked fork', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'console-connect-decision-fork-'));
+  cleanup.push(root);
+  const repo = join(root, 'fork');
+  await git('git', ['init', repo]);
+  await git('git', ['-C', repo, 'remote', 'add', 'origin', 'https://github.com/contributor/project.git']);
+  await git('git', ['-C', repo, 'remote', 'add', 'upstream', 'git@github.com:example/project.git']);
+  const decision = { id: randomUUID(), title: 'Use OAuth', body: 'Use OAuth for sign-in.', proposedBy: randomUUID(),
+    createdAt: '2026-09-23T00:00:00Z', status: 'proposed' as const, affectedTaskIds: [] };
+  const path = await prepareDecisionFile(repo, 'https://github.com/example/project', decision);
+  expect(path).toBe(join(repo, 'docs', 'decisions', `${decision.id}.md`));
+});
