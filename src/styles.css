@@ -237,6 +237,23 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .console-active #terminal,.console-active .console-empty{flex:1;min-height:240px;height:auto}
 }
 
+/* Session rail (R): replaces Team and Decisions on the console tab (1.10) */
+@media(min-width:901px){.workspace.workspace-no-rail{grid-template-columns:244px minmax(420px,1fr)}}
+.session-rail{display:grid;align-content:start;gap:22px;background:var(--color-surface);box-shadow:inset 1px 0 0 var(--color-border);border-left:0;font-size:13px}
+.session-rail section{display:grid;justify-items:start;gap:6px}
+.session-rail h2.section-label{margin:0;font-family:var(--font-ui);font-size:13px;letter-spacing:0}
+.rail-meta{margin:0;font-size:12px;line-height:1.5;color:var(--color-muted)}
+.rail-path{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--font-mono)}
+.status-pill-ended{background:transparent;box-shadow:inset 0 0 0 1px var(--color-border)}
+.session-files{display:grid;gap:2px;width:100%}
+.file{display:flex;justify-content:space-between;gap:10px;font:12px/1.6 var(--font-mono)}
+.file-path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-counts{flex:none}
+.file-added{color:var(--color-success)}
+.file-removed{color:var(--color-danger)}
+.rail-draft{width:100%;padding:9px 12px;font-size:13px}
+.session-strip kbd{margin-left:6px}
+
 /* Shell: locked to the window on desktop widths; only inner regions scroll */
 @media(min-width:901px){
 .workspace{height:100vh;min-height:0}

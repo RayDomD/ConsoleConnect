@@ -39,6 +39,7 @@ declare global {
       terminalWrite(input: { taskId: string; data: string }): void;
       terminalResize(input: { taskId: string; cols: number; rows: number }): void;
       terminalKill(input: { taskId: string }): void;
+      worktreeChanges(input: { taskId: string }): Promise<Array<{ path: string; added: number | null; removed: number | null }>>;
       onTerminalData(callback: (event: { taskId: string; data: string }) => void): void;
       onTerminalExit(callback: (event: { taskId: string; exitCode: number }) => void): void;
     };
@@ -461,6 +462,44 @@ setInterval(() => {
   if (elapsed && terminalSessionActive) elapsed.textContent = elapsedLabel();
 }, 1000);
 
+// Session rail (R): open by default on wide windows; an explicit choice is remembered on this computer.
+const sessionRailKey = 'console-connect.session-rail';
+const sessionRailMinWidth = 1280;
+const changedFilesRefreshMs = 5_000;
+type ChangedFile = { path: string; added: number | null; removed: number | null };
+let changedFiles: { taskId: string; files: ChangedFile[]; at: number } | null = null;
+
+function sessionRailOpen() {
+  const saved = localStorage.getItem(sessionRailKey);
+  return saved ? saved === 'open' : innerWidth >= sessionRailMinWidth;
+}
+
+function changedFilesMarkup() {
+  if (!changedFiles || changedFiles.taskId !== terminalTaskId) return '<p class="rail-meta">Reading the task folder…</p>';
+  if (!changedFiles.files.length) return '<p class="rail-meta">No changes yet.</p>';
+  return changedFiles.files.map(file => `<div class="file"><span class="file-path" title="${escape(file.path)}">${escape(file.path)}</span><span class="file-counts">${file.added !== null ? `<span class="file-added">+${file.added}</span>` : ''}${file.removed ? ` <span class="file-removed">−${file.removed}</span>` : ''}</span></div>`).join('');
+}
+
+async function refreshChangedFiles() {
+  const taskId = terminalTaskId;
+  if (!taskId || !document.querySelector('.session-files')) return;
+  try { changedFiles = { taskId, files: await window.consoleConnect.worktreeChanges({ taskId }), at: Date.now() }; }
+  catch { changedFiles = { taskId, files: [], at: Date.now() }; }
+  const section = document.querySelector('.session-files');
+  if (section && taskId === terminalTaskId) section.innerHTML = changedFilesMarkup();
+}
+setInterval(() => { void refreshChangedFiles(); }, changedFilesRefreshMs);
+
+function sessionRailMarkup(task: Task) {
+  if (task.id !== terminalTaskId) {
+    return `<section><h2 class="section-label">This session</h2><p class="rail-meta">${task.id === watchedTaskId ? 'Watching a shared console, view only.' : 'No console on this computer for this task.'}</p></section>`;
+  }
+  const state = terminalSessionActive ? '<span class="status-pill"><i class="status-dot status-running" aria-hidden="true"></i>Running</span>'
+    : '<span class="status-pill status-pill-ended"><i class="status-dot status-completed" aria-hidden="true"></i>Ended</span>';
+  const canDraft = task.assigneeId === snapshot?.memberId && ['running', 'changes_requested'].includes(task.status);
+  return `<section><h2 class="section-label">This session</h2>${state}<p class="rail-meta">Started ${relativeTime(terminalStartedAt)} on this computer</p>${terminalDirectory ? `<p class="rail-meta rail-path" title="${escape(terminalDirectory)}">${escape(terminalDirectory)}</p>` : ''}</section><section><h2 class="section-label">Changed files</h2><div class="session-files">${changedFilesMarkup()}</div></section>${canDraft ? '<section><button class="rail-draft" data-action="task-tab" data-tab="package">Draft work package</button><p class="rail-meta">Stays private until you submit.</p></section>' : ''}`;
+}
+
 const terminalFontFamily = "'JetBrains Mono', Consolas, monospace";
 const chatGroupWindowMs = 5 * 60 * 1000;
 
@@ -590,8 +629,8 @@ function render() {
           : sharedTerminal && !localTerminal && connection?.mode !== 'supabase' ? '<button class="secondary" data-action="watch-terminal">Watch shared console</button>' : '';
       const stop = localTerminal && terminalSessionActive ? '<button class="text-button" data-action="stop-console">Stop</button>' : '';
       const session = localTerminal && terminalTool ? `<span class="session-tool">${escape(toolNames[terminalTool] ?? terminalTool)}</span><span class="session-branch" title="console-connect/${escape(selected.id)}">console-connect/${escape(selected.id.slice(0, 8))}</span><span class="session-elapsed">${elapsedLabel()}</span>` : '';
-      const status = localTerminal ? terminalSessionActive ? 'Running on this computer' : 'Previous session ended' : watching ? 'Shared view only' : 'No console open';
-      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}</div>${localTerminal || watching ? '<div id="terminal" aria-label="Task console output"></div>' : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
+      const status = localTerminal ? terminalSessionActive ? 'Running' : 'Ended' : watching ? 'View only' : 'No console';
+      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button></div>${localTerminal || watching ? '<div id="terminal" aria-label="Task console output"></div>' : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
       if (localTerminal || watching) {
         terminalRenderSource = localTerminal ? 'local' : 'shared';
         terminalRenderedTaskId = selected.id;
@@ -627,6 +666,18 @@ function render() {
     document.querySelector('.notice')?.insertAdjacentHTML('beforeend', '<button class="secondary" data-action="discard-pending">Discard oldest saved update</button>');
   }
   document.querySelector('.right-rail')!.insertAdjacentHTML('beforeend', `<section class="decisions"><div class="section-head"><span class="section-label">Decisions</span><button class="text-button" data-action="propose-decision">+ Propose</button></div>${snapshot.decisions.map(decision => `<div class="decision"><div class="decision-head"><strong>${escape(decision.title)}</strong><span class="decision-status decision-status-${decision.status}">${escape(decision.status.charAt(0).toUpperCase() + decision.status.slice(1))}</span></div><p>${escape(decision.body)}</p>${decision.documentCommit ? `<small>Commit ${escape(decision.documentCommit.slice(0, 12))}</small>` : ''}${decision.status === 'proposed' && me?.role !== 'contributor' ? decisionStep(decision.id, me?.role === 'owner') : ''}</div>`).join('')}</section>`);
+  if (selected && taskTab === 'console' && !showWorkspaceChat) {
+    const rail = document.querySelector<HTMLElement>('.right-rail')!;
+    if (sessionRailOpen()) {
+      rail.classList.add('session-rail');
+      rail.setAttribute('aria-label', 'Session');
+      rail.innerHTML = sessionRailMarkup(selected);
+      if (selected.id === terminalTaskId && (changedFiles?.taskId !== selected.id || Date.now() - changedFiles.at > changedFilesRefreshMs)) void refreshChangedFiles();
+    } else {
+      rail.remove();
+      document.querySelector('.workspace')!.classList.add('workspace-no-rail');
+    }
+  }
   if (showChatDrawer && !showWorkspaceChat) app.insertAdjacentHTML('beforeend', `<aside class="chat-drawer" aria-label="Team chat drawer">${chatRoomMarkup(true)}</aside>`);
   if (chatToast && !showChatDrawer && !showWorkspaceChat) {
     const author = snapshot.members.find(member => member.id === chatToast!.message.authorId)?.name ?? 'Teammate';
@@ -835,7 +886,8 @@ document.addEventListener('keydown', event => {
   } else if (['1', '2', '3', '4'].includes(key)) {
     keyboardMove = true;
     clickAction(`[data-action=task-tab][data-tab="${shortcutTabs[Number(key) - 1]}"]`);
-  } else if (key === 'n') clickAction('[data-action=new-task]');
+  } else if (key === 'r' && document.querySelector('[data-action=toggle-session-rail]')) clickAction('[data-action=toggle-session-rail]');
+  else if (key === 'n') clickAction('[data-action=new-task]');
   else if (key === 'c') clickAction(document.querySelector('.chat-drawer') ? '[data-action=close-chat-drawer]' : '[data-action=open-chat-drawer]');
   else return;
   event.preventDefault();
@@ -1041,6 +1093,10 @@ app.addEventListener('click', async event => {
       try { terminalDirectory = (await window.consoleConnect.runTask({ ...access, taskId: task.id, tool, repositoryPath })).directory; }
       catch (error) { terminalTaskId = null; terminalSessionActive = false; throw error; }
       await refresh();
+    }
+    if (action === 'toggle-session-rail') {
+      localStorage.setItem(sessionRailKey, sessionRailOpen() ? 'closed' : 'open');
+      keyboardMove = true; render(); return;
     }
     if (action === 'stop-console') {
       if (confirm('Stop this console? The tool ends and unsaved work in it may be lost.')) window.consoleConnect.terminalKill({ taskId: task.id });

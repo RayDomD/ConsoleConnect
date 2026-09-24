@@ -23,3 +23,25 @@ export async function prepareWorktree(repositoryPath: string, workspaceRepositor
   await run('git', ['-C', root, 'worktree', 'add', ...(branchExists ? [] : ['-b', branch]), target, ...(branchExists ? [branch] : [])]);
   return target;
 }
+
+export interface ChangedFile { path: string; added: number | null; removed: number | null }
+
+// Everything the task changed since its branch began: commits, edits, and new files.
+// Line counts are null for binary files and for new files Git does not track yet.
+export async function worktreeChanges(directory: string): Promise<ChangedFile[]> {
+  const branch = (await run('git', ['-C', directory, 'branch', '--show-current'])).stdout.trim();
+  const history = await run('git', ['-C', directory, 'reflog', 'show', '--format=%H', `refs/heads/${branch}`])
+    .then(result => result.stdout.trim().split('\n').filter(Boolean), () => []);
+  const base = history.at(-1) ?? 'HEAD';
+  const [{ stdout: diff }, { stdout: untracked }] = await Promise.all([
+    run('git', ['-C', directory, 'diff', '--numstat', base]),
+    run('git', ['-C', directory, 'ls-files', '--others', '--exclude-standard']),
+  ]);
+  const count = (value: string | undefined) => value === undefined || value === '-' ? null : Number(value);
+  const files = diff.split('\n').filter(Boolean).map(line => {
+    const [added, removed, ...path] = line.split('\t');
+    return { path: path.join('\t'), added: count(added), removed: count(removed) };
+  });
+  for (const path of untracked.split('\n').filter(Boolean)) files.push({ path, added: null, removed: null });
+  return files;
+}

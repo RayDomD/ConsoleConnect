@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from 'vitest';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { prepareWorktree } from '../src/execution';
+import { prepareWorktree, worktreeChanges } from '../src/execution';
 
 const git = promisify(execFile);
 const cleanup: string[] = [];
@@ -54,4 +54,28 @@ test('a task explains when the selected folder is not a Git repository', async (
   cleanup.push(root);
   await expect(prepareWorktree(root, 'https://github.com/example/project', randomUUID(), join(root, 'worktrees')))
     .rejects.toThrow('Choose a local clone or fork of the linked repository');
+});
+
+test('a task worktree lists committed, edited, and new files since the task branch began', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'console-connect-changes-'));
+  cleanup.push(root);
+  const repo = join(root, 'repo');
+  const identity = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com'];
+  await git('git', ['init', repo]);
+  await git('git', ['-C', repo, 'remote', 'add', 'origin', 'https://github.com/example/project.git']);
+  await writeFile(join(repo, 'kept.txt'), 'one\ntwo\n');
+  await git('git', ['-C', repo, 'add', '.']);
+  await git('git', ['-C', repo, ...identity, 'commit', '-m', 'Initial']);
+  const path = await prepareWorktree(repo, 'https://github.com/example/project', randomUUID(), join(root, 'worktrees'));
+  expect(await worktreeChanges(path)).toEqual([]);
+  await writeFile(join(path, 'committed.txt'), 'a\nb\nc\n');
+  await git('git', ['-C', path, 'add', 'committed.txt']);
+  await git('git', ['-C', path, ...identity, 'commit', '-m', 'Work']);
+  await writeFile(join(path, 'kept.txt'), 'one\nchanged\n');
+  await writeFile(join(path, 'new.txt'), 'fresh\n');
+  expect(await worktreeChanges(path)).toEqual([
+    { path: 'committed.txt', added: 3, removed: 0 },
+    { path: 'kept.txt', added: 1, removed: 1 },
+    { path: 'new.txt', added: null, removed: null },
+  ]);
 });

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import type { IPty } from 'node-pty';
 import { startHost } from './coordination';
-import { prepareWorktree } from './execution';
+import { prepareWorktree, worktreeChanges } from './execution';
 import type { Snapshot, Tool } from './coordination';
 import { prepareDecisionFile } from './decisions';
 import { privateVpnAddress } from './network';
@@ -270,6 +270,10 @@ ipcMain.on('stop-watch-terminal', (_event, input: { taskId: string }) => {
   terminalWatches.delete(input.taskId);
 });
 ipcMain.on('terminal-write', (_event, input: { taskId: string; data: string }) => sessions.get(input.taskId)?.terminal.write(input.data));
+ipcMain.handle('worktree-changes', (_event, input: { taskId: string }) => {
+  if (!/^[0-9a-f-]{36}$/i.test(input.taskId)) throw new Error('Choose a valid task.');
+  return worktreeChanges(join(app.getPath('userData'), 'worktrees', input.taskId));
+});
 // The session's onExit cleans up and tells the renderer.
 ipcMain.on('terminal-kill', (_event, input: { taskId: string }) => sessions.get(input.taskId)?.terminal.kill());
 ipcMain.on('terminal-resize', (_event, input: { taskId: string; cols: number; rows: number }) => {

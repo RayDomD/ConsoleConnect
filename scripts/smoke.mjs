@@ -214,6 +214,18 @@ try {
     if (tool === 'claude') {
       await evaluate(`document.querySelector('[data-task="${providerTaskId}"]').click()`);
       if (!(await evaluate("Boolean(document.querySelector('[data-action=start]'))"))) throw new Error('An exited console cannot be relaunched from the task.');
+      // The smoke window is narrower than 1280px, so the rail starts closed and the toggle opens it.
+      if (await evaluate("Boolean(document.querySelector('.session-rail') || document.querySelector('.right-rail'))")) throw new Error('Session rail was open below 1280px.');
+      await evaluate("document.querySelector('[data-action=toggle-session-rail]').click()");
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (await evaluate("document.querySelector('.session-rail .session-files')?.textContent === 'No changes yet.'")) break;
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      if (!(await evaluate("document.querySelector('.session-rail .session-files')?.textContent === 'No changes yet.'"))) throw new Error(`Session rail did not read the task worktree: ${await evaluate("JSON.stringify({ width: innerWidth, rail: document.querySelector('.right-rail')?.className, text: document.querySelector('.right-rail')?.innerText.slice(0, 300) })")}`);
+      await evaluate("document.querySelector('[data-action=toggle-session-rail]').click()");
+      if (await evaluate("Boolean(document.querySelector('.right-rail'))")) throw new Error('Session rail did not close.');
+      await evaluate("document.querySelector('[data-action=toggle-session-rail]').click()");
+      if (!(await evaluate("Boolean(document.querySelector('.session-rail'))"))) throw new Error('Session rail did not reopen.');
       if (process.argv.includes('--screenshot')) {
         const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
         await writeFile('dist/console-tab.png', Buffer.from(captured.data, 'base64'));

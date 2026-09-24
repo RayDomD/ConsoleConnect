@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld('consoleConnect', {
   terminalWrite: (input: { taskId: string; data: string }) => ipcRenderer.send('terminal-write', input),
   terminalResize: (input: { taskId: string; cols: number; rows: number }) => ipcRenderer.send('terminal-resize', input),
   terminalKill: (input: { taskId: string }) => ipcRenderer.send('terminal-kill', input),
+  worktreeChanges: (input: { taskId: string }) => ipcRenderer.invoke('worktree-changes', input),
   onTerminalData: (callback: (event: { taskId: string; data: string }) => void) => ipcRenderer.on('terminal-data', (_event, value) => callback(value)),
   onTerminalExit: (callback: (event: { taskId: string; exitCode: number }) => void) => ipcRenderer.on('terminal-exit', (_event, value) => callback(value)),
 });
