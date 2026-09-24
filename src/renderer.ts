@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { flushPending, loadPending, savePending } from './offline';
 import { hostedAccessToken, hostedProjects, hostedRequest, hostedSignIn, watchHostedWorkspace, type SupabaseConnection } from './supabase-client';
 import { invitationLink, parseInvitationLink } from './invitations';
+import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
@@ -220,8 +221,66 @@ async function currentProjectFolder() {
   return chooseProjectFolder(project);
 }
 
+// Live counts for the Projects page, read from each project's own state when it answers.
+// A project that can't be reached shows no counts rather than stale ones.
+type ProjectSummary = { running: number; review: number; unread: number };
+const projectSummaries = new Map<string, ProjectSummary>();
+const projectSummaryMaxAgeMs = 30_000;
+const projectSummaryTimeoutMs = 4_000;
+let projectSummariesLoadedAt = 0;
+let projectSummariesLoading = false;
+const projectOpenedKey = (projectId: string) => `console-connect.project-opened.${projectId}`;
+
+function relativeTime(timestamp: number) {
+  const minutes = Math.round((timestamp - Date.now()) / 60_000);
+  const format = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
+  if (Math.abs(minutes) < 60) return format.format(minutes, 'minute');
+  if (Math.abs(minutes) < 60 * 24) return format.format(Math.round(minutes / 60), 'hour');
+  return format.format(Math.round(minutes / (60 * 24)), 'day');
+}
+
+function summarize(state: Snapshot): ProjectSummary {
+  const me = state.members.find(member => member.id === state.memberId);
+  return {
+    running: state.tasks.filter(task => task.status === 'running').length,
+    review: me?.role === 'contributor' ? 0 : state.tasks.filter(task => task.status === 'submitted' && task.assigneeId !== state.memberId).length,
+    unread: unreadTeamMessages(state),
+  };
+}
+
+function loadProjectSummaries() {
+  if (projectSummariesLoading || Date.now() - projectSummariesLoadedAt < projectSummaryMaxAgeMs) return;
+  projectSummariesLoading = true;
+  void Promise.all(projects.map(async project => {
+    try {
+      const state = await Promise.race([request('/state', undefined, project.connection) as Promise<Snapshot>,
+        new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('Timed out.')), projectSummaryTimeoutMs))]);
+      projectSummaries.set(project.id, summarize(state));
+    } catch { projectSummaries.delete(project.id); }
+  })).finally(() => {
+    projectSummariesLoading = false;
+    projectSummariesLoadedAt = Date.now();
+    if (view === 'dashboard') render();
+  });
+}
+
 function renderDashboard() {
-  const projectList = projects.map(project => `<article class="project-row"><div><span class="section-label">${project.connection.mode === 'supabase' ? 'Supabase' : 'Computer host'}</span><h2>${escape(project.name)}</h2><p>${escape(project.repository || 'Open to load repository details')}</p><p class="project-folder">Local Git folder: ${escape(project.localRepositoryPath || 'Choose once to launch consoles without browsing each time')}</p></div><div class="project-actions"><button class="secondary" data-action="choose-project-folder" data-project="${escape(project.id)}">${project.localRepositoryPath ? 'Change folder' : 'Choose folder'}</button><button data-action="open-project" data-project="${escape(project.id)}">Open Review Desk</button></div></article>`).join('');
+  loadProjectSummaries();
+  const projectList = projects.map(project => {
+    const identity = repositoryIdentity(project.repository);
+    const host = project.connection.mode === 'supabase' ? 'Hosted on Supabase' : project.connection.shareUrl ? 'Hosted on this computer' : 'Hosted by a teammate';
+    const opened = Number(localStorage.getItem(projectOpenedKey(project.id)));
+    const meta = [identity ? identity.split('/').slice(1).join('/') : project.repository || 'Open to load repository details', host, opened ? `Opened ${relativeTime(opened)}` : ''].filter(Boolean);
+    const summary = projectSummaries.get(project.id);
+    const counts = summary ? [summary.running ? `<span><i class="status-dot status-running" aria-hidden="true"></i>${summary.running} running</span>` : '',
+      summary.review ? `<span><i class="status-dot status-submitted" aria-hidden="true"></i>${summary.review} ${summary.review === 1 ? 'needs' : 'need'} your review</span>` : '',
+      summary.unread ? `<span>${summary.unread} unread in chat</span>` : ''].filter(Boolean) : [];
+    const countLine = summary ? `<div class="project-counts">${counts.length ? counts.join('') : '<span class="project-quiet">Nothing needs you</span>'}</div>` : '';
+    const folder = project.localRepositoryPath
+      ? `Local folder: ${escape(project.localRepositoryPath)}. <button class="text-button inline-link" data-action="choose-project-folder" data-project="${escape(project.id)}">Change</button>`
+      : `No local folder yet. <button class="text-button inline-link" data-action="choose-project-folder" data-project="${escape(project.id)}">Choose folder</button>`;
+    return `<article class="project-row"><div class="project-head"><h2>${escape(project.name)}</h2><button data-action="open-project" data-project="${escape(project.id)}">Open</button></div><p>${meta.map(escape).join(' · ')}</p>${countLine}<p class="project-folder">${folder}</p></article>`;
+  }).join('');
   app.innerHTML = `<main class="dashboard"><header class="dashboard-header"><div class="brand">CONSOLE <b>CONNECT</b></div><button class="text-button" data-action="settings">Settings</button></header><div class="dashboard-body"><h1>Projects</h1><p class="description">Choose where you want to work, or connect another workspace.</p><div class="project-list">${projectList || '<p class="empty-projects">No projects connected yet. Add one below to begin.</p>'}</div>${projects.length ? `<button class="secondary add-project" data-action="add-project">${showSetup ? 'Hide connection forms' : 'Add or join a project'}</button>` : ''}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}${showSetup || !projects.length ? `<section class="setup"><form id="join-invitation"><h2>Join from an invitation</h2><p class="description">Paste the link a teammate shared with you. The project details are already inside it.</p><label>Invitation link<input name="link" required placeholder="consoleconnect://invite/..."></label><label>Your name<input name="name" required></label><button type="submit">Join workspace</button></form><form id="host"><h2>Host on this computer</h2><label>Your name<input name="owner" required></label><label>Workspace name<input name="name" required></label><label>Repository URL<input name="repository" required></label><button type="submit">Start workspace</button></form><form id="join"><h2>Join a computer host</h2><label>Host address<input name="url" placeholder="http://host-ip:24680" required></label><label>Your name<input name="name" required></label><label>Invitation code<input name="code" required></label><button type="submit">Join workspace</button></form><form id="hosted-host"><h2>Host with Supabase</h2><label>Project URL<input name="projectUrl" type="url" required value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" required value="${escape(supabaseDefaults.publishableKey)}"></label><label>Your name<input name="owner" required></label><label>Workspace name<input name="name" required></label><label>Repository URL<input name="repository" required></label><button type="submit">Start hosted workspace</button></form><form id="hosted-join"><h2>Join with Supabase</h2><label>Project URL<input name="projectUrl" type="url" required value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" required value="${escape(supabaseDefaults.publishableKey)}"></label><label>Your name<input name="name" required></label><label>Invitation code<input name="code" required></label><button type="submit">Join hosted workspace</button></form></section>` : ''}</div></main>`;
   const connectionHelp: Record<string, string[]> = {
     'join-invitation': ['Ask your teammate for a one-time Console Connect invitation link.', 'For a computer-hosted workspace, join the same Radmin VPN network and keep the host computer online.', 'Paste the link here. If it names a GitHub account, sign in with that account before joining.'],
@@ -833,6 +892,8 @@ app.addEventListener('click', async event => {
       const project = projects.find(item => item.id === button.dataset.project);
       if (!project) throw new Error('This project is no longer saved on this computer.');
       connection = project.connection;
+      localStorage.setItem(projectOpenedKey(project.id), String(Date.now()));
+      projectSummariesLoadedAt = 0;
       currentInvitationLink = '';
       snapshot = null;
       selectedTaskId = null;
@@ -856,6 +917,7 @@ app.addEventListener('click', async event => {
       stopHostedWatch?.(); stopHostedWatch = null;
       window.consoleConnect.stopWatchingWorkspace();
       connection = null; snapshot = null; view = 'dashboard'; notice = ''; currentInvitationLink = '';
+      projectSummariesLoadedAt = 0;
       showChatDrawer = false; showWorkspaceChat = false; chatToast = null;
       localStorage.removeItem('console-connect.connection'); render(); return;
     }

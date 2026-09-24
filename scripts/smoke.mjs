@@ -117,6 +117,11 @@ try {
   if (!visible.includes('Smoke team') || !(await evaluate("Boolean(document.querySelector('[data-action=new-task]'))"))) throw new Error(`Host form failed: ${visible.slice(0, 300)}`);
   await evaluate("document.querySelector('[data-action=disconnect]').click()");
   if (!(await evaluate("Boolean(document.querySelector('[data-action=open-project]'))"))) throw new Error('Dashboard did not retain the project.');
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("Boolean(document.querySelector('.project-counts'))")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await evaluate("document.querySelector('.project-counts')?.textContent === 'Nothing needs you'"))) throw new Error('Project row did not show live counts from the running host.');
   if (process.argv.includes('--screenshot')) {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/dashboard-project.png', Buffer.from(captured.data, 'base64'));
@@ -280,7 +285,13 @@ try {
   invitation.searchParams.set('host', host.url);
   invitation.searchParams.set('code', invite.code);
   await evaluate("window.__smokeWorkspaceConnected = false; window.__smokeWorkspaceRevision = 0; window.consoleConnect.onWorkspaceConnected(() => { window.__smokeWorkspaceConnected = true; }); window.consoleConnect.onWorkspaceRevision(revision => { window.__smokeWorkspaceRevision = revision; });");
-  await evaluate(`document.querySelector('[data-action="disconnect"]').click(); document.querySelector('[data-action="add-project"]').click(); document.querySelector('#join-invitation input[name=link]').value=${JSON.stringify(invitation.toString())}; document.querySelector('#join-invitation input[name=name]').value='Blair'; document.querySelector('#join-invitation').requestSubmit();`);
+  await evaluate(`document.querySelector('[data-action="disconnect"]').click()`);
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("document.querySelector('.project-counts')?.textContent.includes(' running')")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await evaluate("document.querySelector('.project-counts')?.textContent.includes(' running')"))) throw new Error('Project row did not count running tasks.');
+  await evaluate(`document.querySelector('[data-action="add-project"]').click(); document.querySelector('#join-invitation input[name=link]').value=${JSON.stringify(invitation.toString())}; document.querySelector('#join-invitation input[name=name]').value='Blair'; document.querySelector('#join-invitation').requestSubmit();`);
   for (let attempt = 0; attempt < 30; attempt++) {
     visible = await evaluate('document.body.innerText');
     if (visible.includes('Watch controlled output')) break;
