@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q17: office middle ground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--blue:#355CA8;--blue-bg:#E4EAF1;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 14px;color:var(--muted);max-width:112ch}
+.ctl{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.tabs{display:flex;gap:6px}
+.tabs button,.b2{border:0;border-radius:8px;padding:8px 14px;background:transparent;color:var(--muted);font:500 13px 'Instrument Sans';cursor:pointer;transition:background-color 150ms var(--ease),transform 120ms var(--ease)}
+.tabs button:active,.b2:active{transform:scale(.97)}.tabs button.on{background:var(--surface);color:var(--text);box-shadow:var(--lift-1)}
+.rec{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:6px}
+.b2{background:var(--surface);color:var(--text);box-shadow:inset 0 0 0 1px var(--border)}
+.sp{flex:1}.muted{color:var(--muted);font-size:12px}
+.app{display:grid;grid-template-columns:200px 1fr;height:640px;border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2)}
+.side{background:var(--sidebar);padding:14px 10px;font-size:13px}
+.nav{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-weight:500}.nav.on{background:var(--surface);box-shadow:var(--lift-1)}.nav .ct{margin-left:auto;font-size:11px;color:var(--muted)}
+.desk{display:flex;flex-direction:column;min-width:0;min-height:0}
+.bar{height:48px;flex:none;display:flex;align-items:center;gap:8px;padding:0 18px;box-shadow:inset 0 -1px 0 var(--border);font-size:13px}.bar .m{color:var(--muted)}
+.me{display:inline-flex;align-items:center;gap:8px;font-size:12px;padding:4px 10px;border-radius:99px;box-shadow:inset 0 0 0 1px var(--border)}
+.sw{width:30px;height:18px;border-radius:99px;background:var(--accent);position:relative}.sw::after{content:'';position:absolute;top:2px;left:14px;width:14px;height:14px;border-radius:50%;background:var(--surface)}
+.body{padding:14px 16px;overflow:hidden;flex:1;min-height:0}
+.av{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--selection);color:var(--accent);font-size:11.5px;font-weight:700;flex:none;position:relative}
+.av .pr{position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;background:#3E8E5F;box-shadow:0 0 0 2px var(--surface)}.av .pr.away{background:#B7A58A}
+.toolic{width:11px;height:11px;border-radius:3px;display:inline-block;flex:none}.cx{background:#1F1F1F}.cl{background:#C66B3D}.ag{background:#3A6FD8}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;padding:1px 7px;border-radius:99px;background:var(--selection);white-space:nowrap}
+.pill.w{background:var(--warn-bg);color:var(--warning)}
+/* rooms */
+.rooms{display:grid;grid-template-columns:1.5fr 1fr 1fr;grid-template-rows:1fr auto;gap:12px;height:100%}
+.room{border-radius:16px;padding:10px;display:flex;flex-direction:column;gap:8px;min-height:0;position:relative}
+.room h4{margin:0 2px 2px;font:600 12.5px 'Instrument Sans';display:flex;align-items:center;gap:6px}
+.room h4 span{color:var(--muted);font-weight:500}
+.r-build{background:linear-gradient(180deg,#E8EEE3,#EEF1E8);grid-row:1/3}
+.r-help{background:#F6EEDF}.r-review{background:#E9EDF3}.r-plan{background:#EFEBE0}
+.r-lounge{grid-column:2/4;background:transparent;box-shadow:inset 0 0 0 1px var(--border);flex-direction:row;align-items:center;flex-wrap:wrap;padding:8px 12px}
+.r-lounge h4{margin:0 8px 0 0}
+.stack{display:flex;flex-direction:column;gap:8px;overflow:hidden}
+.card{border-radius:11px;background:var(--surface);box-shadow:var(--lift-1);padding:9px 10px;cursor:pointer;transition:box-shadow 150ms var(--ease)}
+.card:hover{box-shadow:var(--lift-2)}
+.card .top{display:flex;align-items:center;gap:8px;font-size:12.5px}.card .top b{font-size:13px}
+.card .task{font-size:12px;color:var(--muted);margin:5px 0 6px;display:flex;align-items:center;gap:6px}
+.tail{background:var(--well);border-radius:7px;padding:5px 8px;font:10.8px/1.55 'JetBrains Mono',monospace;color:#62676C;height:50px;overflow:hidden}
+.tail .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tail .l.new{animation:rise 240ms var(--ease)}@keyframes rise{from{opacity:0;transform:translateY(4px)}}
+.tail.priv{display:grid;place-items:center;font-family:'Instrument Sans';font-size:11.5px;color:var(--muted)}
+.card.compact .tail{display:none}.card.compact .task{margin-bottom:0}
+.huddle{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);margin-top:6px}
+.huddle .av{width:18px;height:18px;font-size:9px;margin-left:-6px;box-shadow:0 0 0 2px var(--surface)}.huddle .av:first-child{margin-left:0}
+.chipav{display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:3px 10px 3px 4px;border-radius:99px;background:var(--surface);box-shadow:var(--lift-1);margin:2px 4px}
+.chipav .av{width:22px;height:22px;font-size:10px}
+.moving{animation:move 420ms cubic-bezier(.23,1,.32,1)}@keyframes move{from{opacity:0;transform:translateY(-10px) scale(.97)}}
+/* M2 */
+.strip2{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.mini{border-radius:12px;padding:8px 10px;font-size:12px;min-height:74px}
+.mini b{display:block;font-size:12px;margin-bottom:6px}
+.mini .avs{display:flex;gap:5px;flex-wrap:wrap}
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;font-size:12.5px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.opt{display:none}.opt.on{display:block}
+.notes{margin-top:18px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-size:13px}
+.notes div{border-top:1px solid var(--border);padding-top:10px}.notes b{display:block;margin-bottom:3px}.notes p{margin:0;color:var(--muted)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q17 · Office, middle ground</div>
+<h1>Rooms that arrange themselves: the board's clarity with the floor plan's sense of place</h1>
+<p class="lede">Nobody drags anything. Each person's card sits in the room that matches what they're doing, and it moves when that changes. You get the floor plan's "where is everyone" at a glance, with the board's readable cards and console glimpses. Press the buttons to watch people move between rooms.</p>
+<div class="ctl"><div class="tabs"><button class="on" data-o="M1">Rooms that arrange themselves<span class="rec">Recommended</span></button><button data-o="M2">Floor strip over the board</button></div><span class="sp"></span>
+ <button class="b2" id="ev1">Casey's AI asks a question</button><button class="b2" id="ev2">Sam submits</button><button class="b2" id="ev3">Blair opens Sam's console</button><button class="b2" id="rs">Reset</button></div>
+
+<div class="opt on" id="M1">
+<div class="app"><aside class="side"><div class="nav on">Office<span class="ct">5 here</span></div><div class="nav">Orchestrator</div><div class="nav">Team chat</div></aside>
+ <div class="desk"><div class="bar"><b>Office</b><span class="m">Smoke team · 5 here · 1 away</span><span class="sp"></span><span class="me"><span class="sw"></span>Show my console here</span></div>
+ <div class="body"><div class="rooms">
+  <div class="room r-build"><h4>Building <span id="cBuild">3</span></h4><div class="stack" id="build"></div></div>
+  <div class="room r-help"><h4>Needs a hand <span id="cHelp">0</span></h4><div class="stack" id="help"><div class="muted" style="padding:4px 2px">Nobody's stuck right now.</div></div></div>
+  <div class="room r-review"><h4>Reviewing <span id="cRev">1</span></h4><div class="stack" id="rev"></div></div>
+  <div class="room r-lounge" id="lounge"><h4>Around</h4></div>
+ </div></div></div></div>
+<div class="pc"><div class="pro"><b>Good</b><ul><li>Place without the busywork: rooms come from task state</li><li>"Needs a hand" is its own room, so help is obvious</li><li>Huddles show who's watching whose console</li><li>People who aren't working sit compactly in "Around"</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Fixed rooms (Building, Needs a hand, Reviewing, Planning, Around) rather than custom ones</li></ul></div></div>
+</div>
+
+<div class="opt" id="M2">
+<div class="app"><aside class="side"><div class="nav on">Office<span class="ct">5 here</span></div><div class="nav">Orchestrator</div><div class="nav">Team chat</div></aside>
+ <div class="desk"><div class="bar"><b>Office</b><span class="m">Smoke team</span></div>
+ <div class="body"><div class="strip2">
+  <div class="mini r-build"><b>Building</b><div class="avs"><span class="av">S<i class="pr"></i></span><span class="av">C<i class="pr"></i></span><span class="av">R<i class="pr"></i></span></div></div>
+  <div class="mini r-help"><b>Needs a hand</b><div class="avs"></div></div>
+  <div class="mini r-review"><b>Reviewing</b><div class="avs"><span class="av">B<i class="pr"></i></span></div></div>
+  <div class="mini r-plan"><b>Around</b><div class="avs"><span class="av">K<i class="pr"></i></span><span class="av">J<i class="pr away"></i></span></div></div></div>
+  <div class="board">
+   <div class="card"><div class="top"><span class="av">S<i class="pr"></i></span><b>Sam</b></div><div class="task"><span class="toolic cl"></span>Expired invite retry</div><div class="tail"><div class="l">  Editing src/invitations.ts</div><div class="l">● npm test</div></div></div>
+   <div class="card"><div class="top"><span class="av">C<i class="pr"></i></span><b>Casey</b></div><div class="task"><span class="toolic ag"></span>Invite email copy</div><div class="tail"><div class="l">  Drafted 2 subject lines</div></div></div>
+   <div class="card"><div class="top"><span class="av">B<i class="pr"></i></span><b>Blair</b></div><div class="task"><span class="toolic cx"></span>Orchestrator</div><div class="tail"><div class="l">$ console-connect task list</div></div></div>
+  </div></div></div></div>
+<div class="pc"><div class="pro"><b>Good</b><ul><li>The floor plan as a small overview, with the board kept intact below</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Two views of the same people, so the eye jumps between them</li><li>Rooms feel decorative, not where the cards live</li></ul></div></div>
+</div>
+
+<div class="notes">
+ <div><b>How rooms are chosen</b><p>Building: a console is running. Needs a hand: a tool is waiting for input, stuck, or out of usage. Reviewing: has work waiting for their review. Planning: an orchestrator session. Around: here, with nothing running.</p></div>
+ <div><b>Huddles</b><p>When someone watches another's console, their avatars sit together on that card. It's a quiet signal that people are working together.</p></div>
+ <div><b>Motion with purpose</b><p>A card eases into its new room over about 400ms when state changes, so you notice the move. There's no motion under reduced-motion settings.</p></div>
+ <div><b>Same rules as before</b><p>Sharing is per person and view-only. Private consoles show name, task, and room only. Glimpses are light, and full streams run only while open.</p></div>
+</div>
+</div>
+<script>
+const P={
+ sam:{n:'Sam',t:'Expired invite retry',tool:'cl',tail:['  Editing src/invitations.ts (+18 −4)','  Writing tests/invitations.test.ts','● npm test'],room:'build'},
+ casey:{n:'Casey',t:'Invite email copy',tool:'ag',tail:['  Drafted 2 subject lines','  Checking tone against DESIGN.md','  …'],room:'build'},
+ riley:{n:'Riley',t:'Session timeout',tool:'cl',priv:true,room:'build'},
+ blair:{n:'Blair',t:'Reviewing: Check codex launch',tool:'cx',tail:['$ console-connect package show …','  3 files · 34 passed','› '],room:'rev'},
+};
+let huddle=false;
+function card(k,compact){const p=P[k];const tail=p.priv?'<div class="tail priv">Not sharing this console</div>':`<div class="tail" id="tail-${k}">${p.tail.map(l=>`<div class="l">${l}</div>`).join('')}</div>`;
+ const extra=p.pill?`<span class="pill ${p.pillc||''}">${p.pill}</span>`:'';
+ const hd=(k==='sam'&&huddle)?`<div class="huddle"><span class="av">S</span><span class="av">B</span> Blair is watching</div>`:'';
+ return `<div class="card ${compact?'compact':''} ${p.moved?'moving':''}" data-k="${k}"><div class="top"><span class="av">${p.n[0]}<i class="pr"></i></span><b>${p.n}</b><span style="flex:1"></span>${extra}</div><div class="task"><span class="toolic ${p.tool}"></span>${p.t}</div>${tail}${hd}</div>`}
+function render(){
+ ['build','help','rev'].forEach(r=>{const el=document.getElementById(r);const ks=Object.keys(P).filter(k=>P[k].room===r);el.innerHTML=ks.length?ks.map(k=>card(k,r==='rev'&&false)).join(''):(r==='help'?'<div class="muted" style="padding:4px 2px">Nobody\'s stuck right now.</div>':'<div class="muted" style="padding:4px 2px">Empty</div>')});
+ cBuild.textContent=Object.values(P).filter(p=>p.room==='build').length;cHelp.textContent=Object.values(P).filter(p=>p.room==='help').length;cRev.textContent=Object.values(P).filter(p=>p.room==='rev').length;
+ lounge.innerHTML='<h4>Around</h4><span class="chipav"><span class="av">K<i class="pr"></i></span>Kai · reading the spec</span><span class="chipav"><span class="av">J<i class="pr away"></i></span>Jordan · away 40m</span>'+(P.sam.room==='lounge'?'<span class="chipav moving"><span class="av">S<i class="pr"></i></span>Sam · submitted, waiting for review</span>':'');
+ Object.values(P).forEach(p=>p.moved=false);
+}
+ev1.onclick=()=>{P.casey.room='help';P.casey.pill='Waiting for Casey';P.casey.pillc='w';P.casey.tail=['  Drafted 2 subject lines','? Which tone: formal or friendly?','  waiting for input…'];P.casey.moved=true;render()};
+ev2.onclick=()=>{P.sam.room='lounge';render();const r=document.getElementById('rev');r.insertAdjacentHTML('beforeend','<div class="card moving" style="background:var(--surface)"><div class="top"><span class="av">B<i class="pr"></i></span><b>Blair</b><span style="flex:1"></span><span class="pill w">1 new to review</span></div><div class="task">Expired invite retry · from Sam</div></div>')};
+ev3.onclick=()=>{huddle=true;if(P.sam.room!=='build'){P.sam.room='build'}render()};
+rs.onclick=()=>location.reload();
+render();
+const L=['  ✓ 34 passed','  git push -u origin task/expired-invite-retry','  Editing src/oauth-callback.ts (+6 −1)','● npm test'];let i=0;
+setInterval(()=>{const t=document.getElementById('tail-sam');if(!t)return;t.insertAdjacentHTML('beforeend',`<div class="l new">${L[i++%L.length]}</div>`);while(t.children.length>3)t.firstElementChild.remove()},2400);
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.opt').forEach(o=>o.classList.toggle('on',o.id===b.dataset.o))});
+</script>
+</body></html>

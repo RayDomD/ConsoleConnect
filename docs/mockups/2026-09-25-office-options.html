@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q17: the office</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--blue:#355CA8;--blue-bg:#E4EAF1;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--lift-3:var(--ring),0 2px 4px rgb(37 58 48/.06),0 24px 48px -16px rgb(37 58 48/.28);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 14px;color:var(--muted);max-width:112ch}
+.code{font:12px 'JetBrains Mono',monospace}
+.facts{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:18px}
+.fact{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:11px 14px;font-size:13px}.fact b{display:block;margin-bottom:2px}.fact p{margin:0;color:var(--muted)}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tabs button{border:0;border-radius:8px;padding:8px 14px;background:transparent;color:var(--muted);font:500 13px 'Instrument Sans';cursor:pointer;transition:background-color 150ms var(--ease),transform 120ms var(--ease)}
+.tabs button:active{transform:scale(.97)}.tabs button.on{background:var(--surface);color:var(--text);box-shadow:var(--lift-1)}
+.tabs .rec{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:6px}
+.app{display:grid;grid-template-columns:210px 1fr;height:620px;border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2);position:relative}
+.side{background:var(--sidebar);padding:14px 10px;font-size:13px;display:flex;flex-direction:column;gap:2px}
+.nav{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-weight:500}.nav.on{background:var(--surface);box-shadow:var(--lift-1)}
+.nav .ct{margin-left:auto;font-size:11px;color:var(--muted)}
+.h{display:flex;justify-content:space-between;font-weight:600;color:var(--muted);margin:12px 10px 4px}
+.t{padding:7px 10px;font-size:12.5px}
+.desk{display:flex;flex-direction:column;min-width:0;min-height:0}
+.bar{height:48px;flex:none;display:flex;align-items:center;gap:8px;padding:0 18px;box-shadow:inset 0 -1px 0 var(--border);font-size:13px}.bar .m{color:var(--muted)}
+.sp{flex:1}
+.ghost{border:0;background:transparent;color:var(--muted);padding:6px 9px;border-radius:8px;font:500 12px 'Instrument Sans';cursor:pointer}
+.me{display:inline-flex;align-items:center;gap:8px;font-size:12px;padding:4px 10px;border-radius:99px;box-shadow:inset 0 0 0 1px var(--border)}
+.sw{width:30px;height:18px;border-radius:99px;background:var(--accent);position:relative;flex:none}.sw::after{content:'';position:absolute;top:2px;left:14px;width:14px;height:14px;border-radius:50%;background:var(--surface)}
+.body{padding:16px 18px;overflow:auto;flex:1;min-height:0}
+.av{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--selection);color:var(--accent);font-size:12px;font-weight:700;flex:none;position:relative}
+.av .pr{position:absolute;right:-1px;bottom:-1px;width:9px;height:9px;border-radius:50%;background:#3E8E5F;box-shadow:0 0 0 2px var(--surface)}
+.av .pr.away{background:#B7A58A}.av .pr.off{background:#B9C0B6}
+.toolic{width:12px;height:12px;border-radius:3px;display:inline-block}.cx{background:#1F1F1F}.cl{background:#C66B3D}.ag{background:#3A6FD8}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:500;padding:1px 8px;border-radius:99px;background:var(--selection)}
+.pill.w{background:var(--warn-bg);color:var(--warning)}.pill.o{background:transparent;box-shadow:inset 0 0 0 1px var(--border);color:var(--muted)}
+/* B board */
+.board{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.dk{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:12px;cursor:pointer;transition:box-shadow 150ms var(--ease),transform 120ms var(--ease)}
+.dk:hover{box-shadow:var(--lift-2)}.dk:active{transform:scale(.99)}
+.dk .top{display:flex;align-items:center;gap:10px}.dk .top b{display:block;font-size:13.5px}.dk .top small{display:block;color:var(--muted);font-size:12px}
+.dk .task{margin:10px 0 8px;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.tail{background:var(--well);border-radius:8px;padding:7px 9px;font:11.5px/1.55 'JetBrains Mono',monospace;color:#62676C;height:58px;overflow:hidden}
+.tail .l{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tail .l.new{animation:rise 260ms var(--ease)}@keyframes rise{from{opacity:0;transform:translateY(5px)}}
+.tail.priv{display:grid;place-items:center;color:var(--muted);font-family:'Instrument Sans';font-size:12px}
+.dk .foot{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:var(--muted)}
+.dk.need{box-shadow:var(--lift-1),inset 0 0 0 1.5px rgb(128 85 23/.45)}
+/* viewer */
+.viewer{position:absolute;inset:48px 0 0 210px;background:rgb(37 58 48/.14);display:none;padding:20px}
+.viewer.on{display:block}
+.vw{height:100%;border-radius:12px;background:var(--surface);box-shadow:var(--lift-3);display:grid;grid-template-columns:1fr 260px;overflow:hidden;animation:pop 260ms cubic-bezier(.16,1,.3,1)}@keyframes pop{from{opacity:0;transform:scale(.98)}}
+.vw .left{display:flex;flex-direction:column;min-width:0}
+.strip{display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12px;color:var(--muted);box-shadow:inset 0 -1px 0 var(--border)}
+.term{flex:1;background:var(--well);padding:12px 14px;font:12px/1.65 'JetBrains Mono',monospace;overflow:hidden}
+.term .d{color:#62676C}.term .g{color:#346F4B}.term .p{color:#2D624B}.term .y{color:#805517}
+.vw .right{padding:12px;box-shadow:inset 1px 0 0 var(--border);font-size:12.5px;display:flex;flex-direction:column;gap:8px}
+.cmt{border-radius:8px;background:var(--canvas);padding:7px 9px}.cmt b{font-size:12px}
+.input{border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);padding:7px 9px;color:var(--muted)}
+/* A grid */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.tile{border-radius:10px;overflow:hidden;box-shadow:var(--lift-1);background:var(--surface)}
+.tile .s{display:flex;align-items:center;gap:6px;padding:6px 9px;font-size:11.5px;box-shadow:inset 0 -1px 0 var(--border)}
+.tile .tm{background:var(--well);height:200px;padding:7px 9px;font:10.5px/1.55 'JetBrains Mono',monospace;color:#62676C;overflow:hidden}
+/* C room */
+.room{position:relative;height:100%;border-radius:12px;background:var(--canvas);box-shadow:inset 0 0 0 1px var(--border);overflow:hidden}
+.zone{position:absolute;border-radius:14px;background:rgb(252 251 245/.7);box-shadow:inset 0 0 0 1px var(--border);padding:8px 10px;font-size:12px;color:var(--muted)}
+.person{position:absolute;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px}
+.bubble{background:var(--surface);box-shadow:var(--lift-1);border-radius:10px;padding:4px 8px;font:10.5px 'JetBrains Mono',monospace;color:#62676C;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;font-size:12.5px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.rules{margin-top:18px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-size:13px}
+.rules div{border-top:1px solid var(--border);padding-top:10px}.rules b{display:block;margin-bottom:3px}.rules p{margin:0;color:var(--muted)}
+.opt{display:none}.opt.on{display:block}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q17 · Seeing each other</div>
+<h1>Yes, this works. An Office where the team is together, built on the sharing you already have</h1>
+<p class="lede">Today you can watch one teammate's console, if they turn on "Share view only", from inside that task's Console tab. The Office puts everyone in one place: who's here, what they're on, and a glimpse of their console. Nobody can type into anyone else's session.</p>
+<div class="facts">
+ <div class="fact"><b>Already built</b><p>View-only live output from the task owner, no input route for viewers, and output kept in memory only, not saved.</p></div>
+ <div class="fact"><b>Spec rules it keeps</b><p>Sharing is optional and controlled by the session owner. Watchers can comment, and comments go to the task discussion.</p></div>
+ <div class="fact"><b>Limits to design for</b><p>Sharing works on computer-hosted workspaces only (Supabase isn't built yet). The spec also says to "limit and batch optional live streams" to keep hosting cheap.</p></div>
+</div>
+<div class="tabs"><button class="on" data-o="B">Office board<span class="rec">Recommended</span></button><button data-o="A">Wall of terminals</button><button data-o="C">Floor plan</button></div>
+
+<div class="opt on" id="B">
+<div class="app"><aside class="side"><div class="nav on">Office<span class="ct">4 here</span></div><div class="nav">Orchestrator</div><div class="nav">Team chat</div><div class="h"><span>Tasks</span><span>5</span></div><div class="t">Expired invite retry</div><div class="t">Invite email copy</div><div class="t">Session timeout</div></aside>
+ <div class="desk"><div class="bar"><b>Office</b><span class="m">Smoke team · 4 of 5 here</span><span class="sp"></span><span class="me"><span class="sw"></span>Show my console here</span></div>
+ <div class="body"><div class="board" id="board">
+  <div class="dk" data-v="sam"><div class="top"><span class="av">S<i class="pr"></i></span><div><b>Sam</b><small>Contributor · here</small></div></div><div class="task"><span class="toolic cl"></span>Expired invite retry <span class="pill">Running 21m</span></div><div class="tail" id="tailS"><div class="l">  Editing src/invitations.ts (+18 −4)</div><div class="l">  Writing tests/invitations.test.ts</div><div class="l">● npm test</div></div><div class="foot">Shared · 1 watching<span class="sp"></span>Watch</div></div>
+  <div class="dk need" data-v="casey"><div class="top"><span class="av">C<i class="pr"></i></span><div><b>Casey</b><small>Contributor · here</small></div></div><div class="task"><span class="toolic ag"></span>Invite email copy <span class="pill w">Needs Casey's input</span></div><div class="tail"><div class="l">  Drafted 2 subject lines</div><div class="l">? Which tone: formal or friendly?</div><div class="l">  waiting…</div></div><div class="foot">Shared<span class="sp"></span>Watch</div></div>
+  <div class="dk" data-v="blair"><div class="top"><span class="av">B<i class="pr"></i></span><div><b>Blair</b><small>Owner · you</small></div></div><div class="task"><span class="toolic cx"></span>Orchestrator <span class="pill o">Auto · 3 of 20</span></div><div class="tail"><div class="l">$ console-connect task list</div><div class="l">  1 ready for review</div><div class="l">› </div></div><div class="foot">Shared<span class="sp"></span>You</div></div>
+  <div class="dk"><div class="top"><span class="av">R<i class="pr"></i></span><div><b>Riley</b><small>Reviewer · here</small></div></div><div class="task"><span class="toolic cl"></span>Session timeout <span class="pill">Running 6m</span></div><div class="tail priv">Riley isn't sharing this console</div><div class="foot">Private<span class="sp"></span>Ask to watch</div></div>
+  <div class="dk" style="opacity:.7"><div class="top"><span class="av">J<i class="pr away"></i></span><div><b>Jordan</b><small>Contributor · away 40m</small></div></div><div class="task" style="color:var(--muted)">No console open</div><div class="tail priv">Last active 11:02</div><div class="foot"><span class="sp"></span></div></div>
+  <div class="dk" style="opacity:.55"><div class="top"><span class="av">K<i class="pr off"></i></span><div><b>Kai</b><small>Reviewer · offline</small></div></div><div class="task" style="color:var(--muted)">Offline since yesterday</div><div class="tail priv">Queued updates sync when Kai is back</div><div class="foot"><span class="sp"></span></div></div>
+ </div></div></div>
+ <div class="viewer" id="viewer"><div class="vw"><div class="left"><div class="strip"><span class="av" style="width:22px;height:22px;font-size:10px">S</span><b style="color:var(--text)">Sam's console</b><span class="toolic cl"></span>Claude Code<span class="pill o">View only</span><span class="sp"></span><button class="ghost" id="closeV">Close</button></div>
+  <div class="term" id="vterm"><div class="p">&gt; Task: Expired invite retry (assigned by Blair)</div><div class="d">  Reading src/oauth-callback.ts</div><div class="d">  Editing src/invitations.ts (+18 −4)</div><div class="d">  Writing tests/invitations.test.ts (+22)</div><div class="y">● npm test</div></div></div>
+  <div class="right"><b>Task discussion</b><div class="cmt"><b>Blair</b><br>Looks good. Remember the reused-link case.</div><div class="cmt"><b>Sam</b><br>On it.</div><div class="input">Comment on this task…</div><span style="color:var(--muted);font-size:12px">Comments go to the task discussion, not into Sam's console.</span></div></div></div>
+</div>
+<div class="pc"><div class="pro"><b>Good</b><ul><li>Feels like an office: presence, who's on what, and who needs help at a glance</li><li>Each card streams only a three-line glimpse, and the full view opens on click, which keeps streams cheap</li><li>"Needs input" stands out, so the team can nudge or help</li></ul></div><div class="con"><b>Trade-off</b><ul><li>A glimpse, not everything at once</li><li>Needs presence (here, away, offline), which is new</li></ul></div></div>
+</div>
+
+<div class="opt" id="A">
+<div class="app"><aside class="side"><div class="nav on">Office<span class="ct">4 here</span></div><div class="nav">Orchestrator</div><div class="nav">Team chat</div></aside>
+ <div class="desk"><div class="bar"><b>Office</b><span class="m">3 consoles streaming</span></div><div class="body"><div class="grid">
+  <div class="tile"><div class="s"><span class="toolic cl"></span><b>Sam</b> · Expired invite retry</div><div class="tm">&gt; Task: Expired invite retry<br>  Reading src/oauth-callback.ts<br>  Editing src/invitations.ts<br>  Writing tests/invitations.test.ts<br>● npm test<br>  ✓ 34 passed<br>  git push -u origin task/…</div></div>
+  <div class="tile"><div class="s"><span class="toolic ag"></span><b>Casey</b> · Invite email copy</div><div class="tm">  Drafted 2 subject lines<br>? Which tone: formal or friendly?<br>  waiting…</div></div>
+  <div class="tile"><div class="s"><span class="toolic cx"></span><b>Blair</b> · Orchestrator</div><div class="tm">$ console-connect task list<br>  1 ready for review<br>› </div></div>
+  <div class="tile"><div class="s"><span class="toolic cl"></span><b>Riley</b> · Session timeout</div><div class="tm" style="display:grid;place-items:center;font-family:'Instrument Sans';font-size:12px">Not shared</div></div>
+ </div></div></div></div>
+<div class="pc"><div class="pro"><b>Good</b><ul><li>See everything at once, like a control room</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Every shared console streams constantly, against the spec's "limit and batch live streams"</li><li>Hard to read; small text scrolling in parallel</li><li>Feels like monitoring, not an office</li></ul></div></div>
+</div>
+
+<div class="opt" id="C">
+<div class="app"><aside class="side"><div class="nav on">Office<span class="ct">4 here</span></div><div class="nav">Orchestrator</div><div class="nav">Team chat</div></aside>
+ <div class="desk"><div class="bar"><b>Office</b><span class="m">Drag yourself to a room</span></div><div class="body" style="padding:14px"><div class="room">
+  <div class="zone" style="left:20px;top:20px;width:46%;height:52%">Build room</div>
+  <div class="zone" style="right:20px;top:20px;width:40%;height:40%">Review corner</div>
+  <div class="zone" style="right:20px;bottom:20px;width:40%;height:38%">Planning table</div>
+  <div class="person" style="left:70px;top:80px"><div class="bubble">● npm test</div><span class="av">S<i class="pr"></i></span>Sam</div>
+  <div class="person" style="left:250px;top:150px"><div class="bubble">? formal or friendly?</div><span class="av">C<i class="pr"></i></span>Casey</div>
+  <div class="person" style="right:120px;top:80px"><div class="bubble">reviewing PR #41</div><span class="av">R<i class="pr"></i></span>Riley</div>
+  <div class="person" style="right:140px;bottom:60px"><div class="bubble">$ console-connect…</div><span class="av">B<i class="pr"></i></span>Blair</div>
+ </div></div></div></div>
+<div class="pc"><div class="pro"><b>Good</b><ul><li>The most "office-like" and playful</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Rooms and positions are extra work that doesn't help get work done</li><li>Less scannable than cards on an all-day operate surface</li></ul></div></div>
+</div>
+
+<div class="rules">
+ <div><b>Your choice, per person</b><p>"Show my console here" is a personal switch, remembered per computer. You can turn it off per session. Private sessions show only your name, task, and state.</p></div>
+ <div><b>View only, always</b><p>Watching never gives input. Comments go to the task discussion, and "Ask to watch" sends a request the owner can accept.</p></div>
+ <div><b>Light on streams</b><p>Cards get a three-line glimpse a few times a minute. The full live stream runs only while someone has the viewer open.</p></div>
+ <div><b>Both hosting modes</b><p>Office needs view-only sharing on Supabase too, which the spec already lists as remaining work.</p></div>
+</div>
+</div>
+<script>
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.opt').forEach(o=>o.classList.toggle('on',o.id===b.dataset.o))});
+document.querySelector('[data-v=sam]').onclick=()=>viewer.classList.add('on');closeV.onclick=()=>viewer.classList.remove('on');
+const LINES=['  ✓ 34 passed','  git push -u origin task/expired-invite-retry','  gh pr create → #41','$ console-connect package draft …','  ✓ Draft saved','  Editing src/oauth-callback.ts (+6 −1)'];let i=0;
+setInterval(()=>{const l=LINES[i++%LINES.length];const t=document.getElementById('tailS');t.insertAdjacentHTML('beforeend',`<div class="l new">${l}</div>`);while(t.children.length>3)t.firstElementChild.remove();vterm.insertAdjacentHTML('beforeend',`<div class="${l.includes('✓')?'g':'d'}">${l}</div>`);while(vterm.children.length>16)vterm.firstElementChild.remove()},2200);
+</script>
+</body></html>
