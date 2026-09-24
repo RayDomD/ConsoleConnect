@@ -1,0 +1,99 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-25T12:00:00Z",
+  "title": "Design System: Console Connect",
+  "extensions": {
+    "colorMeta": {
+      "canvas": { "role": "neutral", "displayName": "Linen Canvas", "canonical": "oklch(96.0% 0.012 96)", "tonalRamp": ["#0C0B08","#25241F","#41403A","#5F5E57","#7F7D76","#A09E97","#C6C4BE","#F0EEE9"] },
+      "sidebar": { "role": "neutral", "displayName": "Sage Sidebar", "canonical": "oklch(92.8% 0.014 124)", "tonalRamp": ["#0A0C08","#232520","#3E413A","#5C5F57","#7B7F76","#9DA098","#C2C5BE","#EDF0E9"] },
+      "surface": { "role": "neutral", "displayName": "Warm Paper", "canonical": "oklch(98.7% 0.008 98)", "tonalRamp": ["#0C0B09","#252421","#40403C","#5E5E59","#7E7D78","#9F9E9A","#C5C4C0","#EFEEEB"] },
+      "text": { "role": "neutral", "displayName": "Forest Ink", "canonical": "oklch(32.7% 0.032 163)", "tonalRamp": ["#040E09","#192821","#33443C","#4E6359","#6D8378","#8FA49A","#B7C9C0","#E3F3EB"] },
+      "muted": { "role": "neutral", "displayName": "Sage Grey", "canonical": "oklch(51.0% 0.028 150)", "tonalRamp": ["#060D07","#1D271F","#374339","#536256","#728275","#94A397","#BBC8BD","#E6F2E8"] },
+      "border": { "role": "neutral", "displayName": "Hairline Sage", "canonical": "oklch(86.3% 0.021 131)", "tonalRamp": ["#090C07","#21261E","#3C4238","#5A6055","#798074","#9AA195","#C0C6BC","#EBF0E7"] },
+      "accent": { "role": "primary", "displayName": "Studio Green", "canonical": "oklch(45.3% 0.069 163)", "tonalRamp": ["#001006","#052C1D","#1F4937","#386953","#578A72","#7CAB94","#A6CFBB","#D5F8E6"] },
+      "accent-hover": { "role": "primary", "displayName": "Deep Studio Green", "canonical": "oklch(38.7% 0.058 164)", "tonalRamp": ["#001007","#0D2A1E","#264839","#406755","#5E8874","#82A996","#ABCEBD","#D9F7E8"] },
+      "on-accent": { "role": "neutral", "displayName": "Paper on Green", "canonical": "oklch(98.7% 0.008 98)" },
+      "selection": { "role": "neutral", "displayName": "Pale Sage", "canonical": "oklch(91.3% 0.022 136)", "tonalRamp": ["#090D07","#20261E","#3B4239","#586055","#788074","#99A196","#BFC7BC","#EAF1E8"] },
+      "success": { "role": "primary", "displayName": "Studio Green", "canonical": "oklch(45.3% 0.069 163)" },
+      "warning": { "role": "tertiary", "displayName": "Ochre Warning", "canonical": "oklch(48.6% 0.094 71)", "tonalRamp": ["#1A0500","#381D00","#593702","#7C541D","#9F743D","#BE9665","#E2BD92","#FFE9C3"] },
+      "danger": { "role": "tertiary", "displayName": "Clay Red", "canonical": "oklch(47.9% 0.148 20)", "tonalRamp": ["#270000","#4C000A","#731921","#9D343A","#C45457","#E37C7C","#FFA6A5","#FFD6D3"] }
+    },
+    "themes": {
+      "source": "src/themes/_internal/palettes.ts",
+      "default": "forest",
+      "variants": {
+        "forest": { "name": "Forest & linen", "canvas": "#F4F2E9", "sidebar": "#E5E9DF", "surface": "#FCFBF5", "text": "#253A30", "muted": "#5B6B5E", "border": "#CDD5C7", "accent": "#2D624B", "accent-hover": "#234E3C", "selection": "#DCE6D8" },
+        "blue": { "name": "Blue & porcelain", "canvas": "#F3F5F8", "sidebar": "#E4EAF1", "surface": "#FCFDFE", "text": "#24354D", "muted": "#596B80", "border": "#CDD6E1", "accent": "#355CA8", "accent-hover": "#294986", "selection": "#D9E4F5" },
+        "ochre": { "name": "Ochre & parchment", "canvas": "#F7F1E6", "sidebar": "#EEE3D1", "surface": "#FFFCF5", "text": "#3D3026", "muted": "#77614F", "border": "#DCCDB9", "accent": "#9A4F19", "accent-hover": "#7C3E13", "selection": "#EBDCC5" }
+      },
+      "fixedAcrossThemes": ["success", "warning", "danger", "terminal ANSI colors"]
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Task and page titles." },
+      "headline": { "displayName": "Headline", "purpose": "Section titles, chat room title, project names." },
+      "title": { "displayName": "Title", "purpose": "Task names, card headings, button labels." },
+      "body": { "displayName": "Body", "purpose": "Descriptions and reading text, near 65ch." },
+      "label": { "displayName": "Label", "purpose": "Field labels, metadata, timestamps, sentence case." },
+      "mono": { "displayName": "Mono", "purpose": "Terminal output only." }
+    },
+    "shadows": [
+      { "name": "ring", "value": "0 0 0 1px color-mix(in oklab, var(--color-text) 8%, transparent)", "purpose": "Hairline edge inside every lifted surface." },
+      { "name": "lift-1", "value": "0 0 0 1px color-mix(in oklab, var(--color-text) 8%, transparent), 0 1px 2px color-mix(in oklab, var(--color-text) 7%, transparent)", "purpose": "Selected task card, chat bubbles." },
+      { "name": "lift-2", "value": "0 0 0 1px color-mix(in oklab, var(--color-text) 8%, transparent), 0 1px 2px color-mix(in oklab, var(--color-text) 6%, transparent), 0 12px 28px -14px color-mix(in oklab, var(--color-text) 22%, transparent)", "purpose": "Action panel, package summary, setup forms, console well." },
+      { "name": "lift-3", "value": "0 0 0 1px color-mix(in oklab, var(--color-text) 8%, transparent), 0 2px 4px color-mix(in oklab, var(--color-text) 6%, transparent), 0 24px 48px -16px color-mix(in oklab, var(--color-text) 28%, transparent)", "purpose": "Chat drawer, toasts, dialogs." }
+    ],
+    "motion": [
+      { "name": "ease-out", "value": "cubic-bezier(.23,1,.32,1)", "purpose": "Default for presses, color changes, slides." },
+      { "name": "ease-out-expo", "value": "cubic-bezier(.16,1,.3,1)", "purpose": "Drawer entrance." },
+      { "name": "press", "value": "120ms", "purpose": "Button and row press scale to 0.97." },
+      { "name": "state", "value": "150ms", "purpose": "Color and shadow changes." },
+      { "name": "glide", "value": "220ms", "purpose": "Task selection card and tab underline." },
+      { "name": "drawer", "value": "280ms", "purpose": "Chat drawer in; about 180ms out." }
+    ],
+    "breakpoints": [
+      { "name": "stack-rail", "value": "900px" },
+      { "name": "stack-all", "value": "600px" }
+    ]
+  },
+  "components": [
+    { "name": "Primary Button", "kind": "button", "refersTo": "button-primary", "description": "One per area, for the main action.",
+      "html": "<button class=\"ds-btn-primary\">Approve result</button>",
+      "css": ".ds-btn-primary{background:var(--color-accent,#2D624B);color:var(--color-on-accent,#FCFBF5);border:0;border-radius:8px;padding:11px 16px;font:600 14px 'Instrument Sans','Segoe UI',sans-serif;cursor:pointer;box-shadow:inset 0 1px 0 rgb(252 251 245/.18),0 1px 2px rgb(37 58 48/.22),0 4px 10px -4px rgb(37 58 48/.3);transition:transform 120ms cubic-bezier(.23,1,.32,1),background-color 150ms cubic-bezier(.23,1,.32,1),box-shadow 150ms cubic-bezier(.23,1,.32,1)}.ds-btn-primary:hover{background:var(--color-accent-hover,#234E3C)}.ds-btn-primary:active{transform:scale(.97);box-shadow:inset 0 1px 2px rgb(37 58 48/.3)}.ds-btn-primary:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-surface,#FCFBF5),0 0 0 4px rgb(45 98 75/.7)}" },
+    { "name": "Secondary Button", "kind": "button", "refersTo": "button-secondary", "description": "Supporting actions next to a primary.",
+      "html": "<button class=\"ds-btn-secondary\">Request changes</button>",
+      "css": ".ds-btn-secondary{background:transparent;color:var(--color-text,#253A30);border:0;border-radius:8px;padding:11px 16px;font:500 14px 'Instrument Sans','Segoe UI',sans-serif;cursor:pointer;box-shadow:inset 0 0 0 1px var(--color-border,#CDD5C7);transition:transform 120ms cubic-bezier(.23,1,.32,1),background-color 150ms cubic-bezier(.23,1,.32,1)}.ds-btn-secondary:hover{background:var(--color-canvas,#F4F2E9)}.ds-btn-secondary:active{transform:scale(.97)}.ds-btn-secondary:focus-visible{outline:none;box-shadow:0 0 0 2px var(--color-surface,#FCFBF5),0 0 0 4px rgb(45 98 75/.7)}" },
+    { "name": "Settings Icon Button", "kind": "button", "refersTo": "button-text", "description": "Quiet icon action, e.g. the sidebar Settings gear.",
+      "html": "<button class=\"ds-btn-icon\" aria-label=\"Settings\"><svg viewBox=\"0 0 24 24\" width=\"18\" height=\"18\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><circle cx=\"12\" cy=\"12\" r=\"3\"/><path d=\"M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1\"/></svg></button>",
+      "css": ".ds-btn-icon{display:grid;place-items:center;width:36px;height:36px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--color-muted,#5B6B5E);cursor:pointer;transition:background-color 150ms cubic-bezier(.23,1,.32,1),color 150ms}.ds-btn-icon svg{transition:transform 240ms cubic-bezier(.23,1,.32,1)}.ds-btn-icon:hover{background:var(--color-selection,#DCE6D8);color:var(--color-text,#253A30)}.ds-btn-icon:hover svg{transform:rotate(45deg)}.ds-btn-icon:active{transform:scale(.97)}" },
+    { "name": "Text Input", "kind": "input", "refersTo": "input", "description": "All form fields.",
+      "html": "<input class=\"ds-input\" placeholder=\"Write an update or ask a question…\">",
+      "css": ".ds-input{display:block;width:280px;border:1px solid var(--color-border,#CDD5C7);border-radius:8px;background:var(--color-surface,#FCFBF5);color:var(--color-text,#253A30);padding:10px;font:400 15px 'Instrument Sans','Segoe UI',sans-serif;transition:box-shadow 150ms cubic-bezier(.23,1,.32,1),border-color 150ms}.ds-input:focus{outline:none;border-color:var(--color-accent,#2D624B);box-shadow:0 0 0 3px rgb(45 98 75/.18)}" },
+    { "name": "Task Row", "kind": "nav", "refersTo": "task-selected", "description": "Sidebar task with a shape-coded status dot; selected state is a lifted paper card.",
+      "html": "<div class=\"ds-tasks\"><button class=\"ds-task is-on\"><i class=\"ds-dot run\"></i><strong>Fix OAuth callback</strong><small>Running</small></button><button class=\"ds-task\"><i class=\"ds-dot wait\"></i><strong>Invite flow copy</strong><small>Awaiting approval</small></button></div>",
+      "css": ".ds-tasks{background:var(--color-sidebar,#E5E9DF);padding:10px;width:240px;display:grid;gap:4px}.ds-task{display:grid;grid-template-columns:8px 1fr;column-gap:10px;align-items:center;text-align:left;border:0;border-radius:8px;background:transparent;padding:10px 12px;color:var(--color-text,#253A30);font:400 12px 'Instrument Sans',sans-serif;cursor:pointer;transition:transform 120ms cubic-bezier(.23,1,.32,1)}.ds-task strong{font-size:13px;font-weight:600}.ds-task small{grid-column:2;color:var(--color-muted,#5B6B5E);margin-top:3px}.ds-task:active{transform:scale(.98)}.ds-task.is-on{background:var(--color-surface,#FCFBF5);box-shadow:0 0 0 1px rgb(37 58 48/.08),0 1px 2px rgb(37 58 48/.07)}.ds-dot{width:8px;height:8px;border-radius:50%}.ds-dot.run{background:var(--color-accent,#2D624B)}.ds-dot.wait{box-shadow:inset 0 0 0 1.5px var(--color-warning,#805517)}" },
+    { "name": "Tabs", "kind": "nav", "description": "Task sections with an accent underline.",
+      "html": "<nav class=\"ds-tabs\"><button class=\"is-on\">Overview</button><button>Console</button><button>Package</button><button>Discussion</button></nav>",
+      "css": ".ds-tabs{display:flex;gap:2px;box-shadow:inset 0 -1px 0 var(--color-border,#CDD5C7)}.ds-tabs button{border:0;background:transparent;padding:10px 14px;font:500 14px 'Instrument Sans',sans-serif;color:var(--color-muted,#5B6B5E);cursor:pointer;transition:color 150ms}.ds-tabs button:hover{color:var(--color-text,#253A30)}.ds-tabs button.is-on{color:var(--color-text,#253A30);box-shadow:inset 0 -2px 0 var(--color-accent,#2D624B)}" },
+    { "name": "Chat Bubbles", "kind": "custom", "refersTo": "chat-bubble", "description": "Borderless bubbles; own messages on Pale Sage.",
+      "html": "<div class=\"ds-chat\"><div class=\"ds-bubble\">OAuth callback is ready for review.</div><div class=\"ds-bubble own\">I'll test the Google path.</div></div>",
+      "css": ".ds-chat{display:flex;flex-direction:column;gap:10px;background:var(--color-canvas,#F4F2E9);padding:16px;width:320px;font:400 14px/1.5 'Instrument Sans',sans-serif;color:var(--color-text,#253A30)}.ds-bubble{align-self:flex-start;padding:12px 15px;border-radius:14px 14px 14px 4px;background:var(--color-surface,#FCFBF5);box-shadow:0 0 0 1px rgb(37 58 48/.08),0 1px 2px rgb(37 58 48/.07)}.ds-bubble.own{align-self:flex-end;border-radius:14px 14px 4px 14px;background:var(--color-selection,#DCE6D8);box-shadow:none}" },
+    { "name": "Count Badge", "kind": "chip", "refersTo": "count-badge", "description": "Unread counts.",
+      "html": "<span class=\"ds-count\">3</span>",
+      "css": ".ds-count{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--color-accent,#2D624B);color:var(--color-on-accent,#FCFBF5);font:700 11px 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums}" }
+  ],
+  "narrative": {
+    "northStar": "The Well-Run Studio",
+    "overview": "Console Connect is a studio shared by people who build software together. Each person has a desk (their task and console), there is a shared table (team chat and decisions), and there are rooms you can see into (the Office). The studio is well run: everything has a place, work in progress is visible, and nothing shouts. The look descends from the Paper & ink Review Desk: warm paper surfaces, an editorial serif for titles, and a quiet sans for everything you operate.\n\nIt is an operate surface people sit in all day, so density is high and the chrome recedes. Personality lives in the details: soft layered depth instead of boxes, controls that respond to a press, a selection card that slides between tasks, and serif titles that make each task feel like a document worth reading. Motion confirms what happened and never decorates.\n\nThree color themes (Forest & linen, Blue & porcelain, Ochre & parchment) are the same studio in different light. They change color only.",
+    "keyCharacteristics": ["Warm paper surfaces with tinted, never pure, whites and darks", "Newsreader serif for titles, Instrument Sans for the interface, tabular figures throughout", "Soft layered shadows mark real layers; borders are hairline dividers only", "Tactile and restrained controls: a slight press, eased color, one strong action per area", "Three interchangeable color themes over one fixed structure"],
+    "rules": [
+      { "name": "The Same Room, Different Light Rule", "body": "A theme changes color and nothing else. Type, spacing, radius, elevation, and motion are identical in all three.", "section": "colors" },
+      { "name": "The Role Variable Rule", "body": "Every color in UI code comes from a role variable (var(--color-accent), or color-mix() on one). Hard-coded hex in components breaks the other two themes. Shadows derive from var(--color-text) for the same reason.", "section": "colors" },
+      { "name": "The One Accent Rule", "body": "The accent marks action or liveness. If more than one filled accent button competes in an area, one of them is wrong.", "section": "colors" },
+      { "name": "The Sentence Case Rule", "body": "Headings and labels are sentence case. The \"CONSOLE CONNECT\" wordmark is the only uppercase text in the interface. No uppercase eyebrow labels above headings.", "section": "typography" },
+      { "name": "The No Box Rule", "body": "Don't wrap content in a 1px bordered box to separate it. Use space first, then a lift level.", "section": "elevation" },
+      { "name": "The No Side Stripe Rule", "body": "No colored left or right borders on cards, quotes, callouts, or list items. Use a tint (quotes, reply previews) or a lift instead.", "section": "elevation" }
+    ],
+    "dos": ["Do use role variables (var(--color-*)) for every color and check new screens in all three themes.", "Do separate content with space first and a lift level second.", "Do pair every state color with a shape or a word.", "Do keep daily-use motion short: presses 120ms, state changes 150–240ms, drawers about 280ms, with nothing under reduced motion.", "Do use tabular figures for counts, times, and revisions."],
+    "donts": ["Don't hard-code hex colors in UI code.", "Don't use colored side borders on cards, quotes, callouts, or list items.", "Don't use uppercase eyebrow labels; the wordmark is the only uppercase text.", "Don't use #000 or #fff; the darkest and lightest values are tinted.", "Don't let a theme change anything but color."]
+  }
+}
