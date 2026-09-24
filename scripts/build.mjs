@@ -17,4 +17,6 @@ for (const [pkg, file] of [
   ['newsreader', 'newsreader-latin-ext-opsz-normal.woff2'],
   ['instrument-sans', 'instrument-sans-latin-wght-normal.woff2'],
   ['instrument-sans', 'instrument-sans-latin-ext-wght-normal.woff2'],
+  ['jetbrains-mono', 'jetbrains-mono-latin-wght-normal.woff2'],
+  ['jetbrains-mono', 'jetbrains-mono-latin-ext-wght-normal.woff2'],
 ]) await cp(`node_modules/@fontsource-variable/${pkg}/files/${file}`, `dist/fonts/${file}`);

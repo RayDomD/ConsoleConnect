@@ -434,6 +434,7 @@ function taskBody(task: Task) {
   return `<h1>${escape(task.title)}</h1><div class="meta"><span class="status-pill status-pill-${task.status}"><i class="status-dot status-${task.status}" aria-hidden="true"></i>${escape(status.charAt(0).toUpperCase() + status.slice(1))}</span>${assignee ? `<span class="meta-person"><span class="avatar" aria-hidden="true">${escape(assignee.name.slice(0, 1).toUpperCase())}</span>${escape(assignee.name)}</span><span aria-hidden="true">·</span>` : ''}<span>Revision ${task.revision}</span></div><nav class="task-tabs" aria-label="Task sections">${tabs.map(tab => `<button class="task-tab ${taskTab === tab ? 'active' : ''}" data-action="task-tab" data-tab="${tab}" aria-current="${taskTab === tab ? 'page' : 'false'}">${tab.charAt(0).toUpperCase() + tab.slice(1)}</button>`).join('')}</nav><div class="task-tab-content">${taskTab === 'overview' ? `<p class="description">${escape(task.description)}</p>${['unassigned', 'awaiting_approval', 'ready'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : ''}` : ''}${taskTab === 'package' ? `${packageSummary}${['running', 'changes_requested', 'submitted'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : !task.package ? '<p class="description">No work package yet.</p>' : ''}` : ''}</div>`;
 }
 
+const terminalFontFamily = "'JetBrains Mono', Consolas, monospace";
 const chatGroupWindowMs = 5 * 60 * 1000;
 
 // Consecutive messages from one person on the same day, within five minutes, share one name, time, and avatar.
@@ -573,7 +574,7 @@ function render() {
           terminalFit?.fit();
           if (terminalHadFocus) terminal.focus();
         } else {
-          terminal = new Terminal({ theme: theme.terminal, fontFamily: 'Consolas, monospace', fontSize: 13, cursorBlink: localTerminal && terminalSessionActive });
+          terminal = new Terminal({ theme: theme.terminal, fontFamily: terminalFontFamily, fontSize: 13, cursorBlink: localTerminal && terminalSessionActive });
           terminalFit = new FitAddon();
           terminal.loadAddon(terminalFit);
           terminal.open(container);
@@ -1080,7 +1081,8 @@ window.consoleConnect.onTerminalSharingError(event => {
   render();
 });
 loadTheme();
-render();
+// xterm measures glyphs when a terminal opens, so the terminal face is loaded before anything renders.
+void document.fonts.load(`13px ${terminalFontFamily}`).catch(() => undefined).finally(render);
 if (supabaseDefaults.projectUrl && supabaseDefaults.publishableKey) {
   void discoverHostedProjects(supabaseDefaults.projectUrl, supabaseDefaults.publishableKey)
     .then(count => { if (count && view === 'dashboard') render(); }).catch(() => {});

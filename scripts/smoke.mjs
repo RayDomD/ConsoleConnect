@@ -56,6 +56,9 @@ try {
     if (await evaluate("Boolean(document.querySelector('#host'))")) break;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
+  if (!(await evaluate("document.fonts.check(\"13px 'JetBrains Mono'\") && [...document.fonts].some(face => face.family.includes('JetBrains Mono') && face.status === 'loaded')"))) {
+    throw new Error('The terminal face did not load before the first render.');
+  }
   if (!(await evaluate("Boolean(document.querySelector('#hosted-host') && document.querySelector('#hosted-join'))"))) {
     throw new Error('Hosted workspace setup is missing from the desktop window.');
   }
