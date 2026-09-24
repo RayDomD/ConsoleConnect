@@ -214,9 +214,11 @@ try {
     if (tool === 'claude') {
       await evaluate(`document.querySelector('[data-task="${providerTaskId}"]').click()`);
       if (!(await evaluate("Boolean(document.querySelector('[data-action=start]'))"))) throw new Error('An exited console cannot be relaunched from the task.');
-      // The smoke window is narrower than 1280px, so the rail starts closed and the toggle opens it.
-      if (await evaluate("Boolean(document.querySelector('.session-rail') || document.querySelector('.right-rail'))")) throw new Error('Session rail was open below 1280px.');
-      await evaluate("document.querySelector('[data-action=toggle-session-rail]').click()");
+      // With no saved choice, the rail opens exactly when the window is at least 1280px wide.
+      if (!(await evaluate("(innerWidth >= 1280) === Boolean(document.querySelector('.session-rail'))"))) {
+        throw new Error(`Session rail default ignored the window width: ${await evaluate("JSON.stringify({ width: innerWidth, rail: document.querySelector('.right-rail')?.className })")}`);
+      }
+      if (!(await evaluate("Boolean(document.querySelector('.session-rail'))"))) await evaluate("document.querySelector('[data-action=toggle-session-rail]').click()");
       for (let attempt = 0; attempt < 30; attempt++) {
         if (await evaluate("document.querySelector('.session-rail .session-files')?.textContent === 'No changes yet.'")) break;
         await new Promise(resolve => setTimeout(resolve, 200));
