@@ -254,6 +254,24 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .rail-draft{width:100%;padding:9px 12px;font-size:13px}
 .session-strip kbd{margin-left:6px}
 
+/* Focus mode (F): sidebar as status dots, title in the top bar, well edge to edge (1.10) */
+@media(min-width:901px){
+.workspace.workspace-focus{grid-template-columns:52px minmax(420px,1fr) 230px}
+.workspace.workspace-focus.workspace-no-rail{grid-template-columns:52px minmax(420px,1fr)}
+.workspace-focus>aside:first-child{padding:14px 8px}
+.workspace-focus .brand,.workspace-focus .workspace-name,.workspace-focus .aside-label,.workspace-focus .chat-link,.workspace-focus .sidebar-bottom .avatar,.workspace-focus .sidebar-bottom .identity{display:none}
+.workspace-focus .task-link{grid-template-columns:8px;justify-content:center;padding:12px 0}
+.workspace-focus .task-link strong,.workspace-focus .task-link small{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.workspace-focus .sidebar-bottom{justify-content:center;padding:12px 0 0}
+.workspace-focus .breadcrumb .status-pill{margin-left:4px}
+.workspace-focus .desk-content.console-active{padding:0}
+.workspace-focus .console-active>h1,.workspace-focus .console-active>.meta{display:none}
+.workspace-focus .console-active .task-tabs{padding:0 20px}
+.workspace-focus .console-active .task-tab-content{padding-top:0}
+.workspace-focus .console-workspace{border-radius:0;box-shadow:none}
+.workspace-focus .console-workspace #terminal{padding:14px 22px}
+}
+
 /* Shell: locked to the window on desktop widths; only inner regions scroll */
 @media(min-width:901px){
 .workspace{height:100vh;min-height:0}

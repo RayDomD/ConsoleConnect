@@ -71,6 +71,8 @@ let showInviteForm = false;
 let assignMenuOpen = false;
 // Set before a keyboard-driven selection so the next render skips the glide.
 let keyboardMove = false;
+// Focus mode (F) on the console tab: sidebar as dots, title in the top bar, the well edge to edge.
+let consoleFocus = false;
 // Decisions whose commit field is showing: prepared this session, or opened with Enter commit.
 const commitFieldDecisionIds = new Set<string>();
 let terminalTaskId: string | null = null;
@@ -586,7 +588,7 @@ function render() {
   const selected = snapshot.tasks.find(task => task.id === selectedTaskId) ?? snapshot.tasks[0];
   const me = snapshot.members.find(member => member.id === snapshot!.memberId);
   const unread = unreadTeamMessages();
-  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(task.status.replaceAll('_', ' '))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(me?.role)}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(member.role)}</small></div></div>`).join('')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(task.status.replaceAll('_', ' '))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(me?.role)}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(member.role)}</small></div></div>`).join('')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
   document.querySelector('.desk-content')?.classList.toggle('console-active', taskTab === 'console' && !showWorkspaceChat);
   document.querySelector('.topbar div')!.innerHTML = `<button class="secondary topbar-chat" data-action="open-chat-drawer">Chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button><button class="text-button" data-action="disconnect">Projects</button>`;
   if (me?.role !== 'owner') document.querySelector('.invite')?.remove();
@@ -630,7 +632,7 @@ function render() {
       const stop = localTerminal && terminalSessionActive ? '<button class="text-button" data-action="stop-console">Stop</button>' : '';
       const session = localTerminal && terminalTool ? `<span class="session-tool">${escape(toolNames[terminalTool] ?? terminalTool)}</span><span class="session-branch" title="console-connect/${escape(selected.id)}">console-connect/${escape(selected.id.slice(0, 8))}</span><span class="session-elapsed">${elapsedLabel()}</span>` : '';
       const status = localTerminal ? terminalSessionActive ? 'Running' : 'Ended' : watching ? 'View only' : 'No console';
-      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button></div>${localTerminal || watching ? '<div id="terminal" aria-label="Task console output"></div>' : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
+      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button><button class="text-button" data-action="toggle-console-focus" aria-pressed="${consoleFocus}" title="Focus mode (F)">Focus<kbd>F</kbd></button></div>${localTerminal || watching ? '<div id="terminal" aria-label="Task console output"></div>' : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
       if (localTerminal || watching) {
         terminalRenderSource = localTerminal ? 'local' : 'shared';
         terminalRenderedTaskId = selected.id;
@@ -667,6 +669,10 @@ function render() {
   }
   document.querySelector('.right-rail')!.insertAdjacentHTML('beforeend', `<section class="decisions"><div class="section-head"><span class="section-label">Decisions</span><button class="text-button" data-action="propose-decision">+ Propose</button></div>${snapshot.decisions.map(decision => `<div class="decision"><div class="decision-head"><strong>${escape(decision.title)}</strong><span class="decision-status decision-status-${decision.status}">${escape(decision.status.charAt(0).toUpperCase() + decision.status.slice(1))}</span></div><p>${escape(decision.body)}</p>${decision.documentCommit ? `<small>Commit ${escape(decision.documentCommit.slice(0, 12))}</small>` : ''}${decision.status === 'proposed' && me?.role !== 'contributor' ? decisionStep(decision.id, me?.role === 'owner') : ''}</div>`).join('')}</section>`);
   if (selected && taskTab === 'console' && !showWorkspaceChat) {
+    if (consoleFocus) {
+      document.querySelector('.workspace')!.classList.add('workspace-focus');
+      document.querySelector('.breadcrumb')!.insertAdjacentHTML('beforeend', document.querySelector('.desk-content .status-pill')?.outerHTML ?? '');
+    }
     const rail = document.querySelector<HTMLElement>('.right-rail')!;
     if (sessionRailOpen()) {
       rail.classList.add('session-rail');
@@ -876,6 +882,11 @@ document.addEventListener('keydown', event => {
     openPalette(paletteItems());
     return;
   }
+  if (event.ctrlKey && event.key === '`' && terminal?.element?.isConnected) {
+    event.preventDefault();
+    terminal.focus();
+    return;
+  }
   if (event.ctrlKey || event.metaKey || event.altKey || typingTarget(event.target)) return;
   const tasks = snapshot.tasks;
   if ((key === 'j' || key === 'k') && tasks.length) {
@@ -887,6 +898,7 @@ document.addEventListener('keydown', event => {
     keyboardMove = true;
     clickAction(`[data-action=task-tab][data-tab="${shortcutTabs[Number(key) - 1]}"]`);
   } else if (key === 'r' && document.querySelector('[data-action=toggle-session-rail]')) clickAction('[data-action=toggle-session-rail]');
+  else if (key === 'f' && document.querySelector('[data-action=toggle-console-focus]')) clickAction('[data-action=toggle-console-focus]');
   else if (key === 'n') clickAction('[data-action=new-task]');
   else if (key === 'c') clickAction(document.querySelector('.chat-drawer') ? '[data-action=close-chat-drawer]' : '[data-action=open-chat-drawer]');
   else return;
@@ -1094,6 +1106,7 @@ app.addEventListener('click', async event => {
       catch (error) { terminalTaskId = null; terminalSessionActive = false; throw error; }
       await refresh();
     }
+    if (action === 'toggle-console-focus') { consoleFocus = !consoleFocus; keyboardMove = true; render(); return; }
     if (action === 'toggle-session-rail') {
       localStorage.setItem(sessionRailKey, sessionRailOpen() ? 'closed' : 'open');
       keyboardMove = true; render(); return;

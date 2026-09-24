@@ -226,6 +226,18 @@ try {
       if (await evaluate("Boolean(document.querySelector('.right-rail'))")) throw new Error('Session rail did not close.');
       await evaluate("document.querySelector('[data-action=toggle-session-rail]').click()");
       if (!(await evaluate("Boolean(document.querySelector('.session-rail'))"))) throw new Error('Session rail did not reopen.');
+      await evaluate("document.querySelector('[data-action=toggle-console-focus]').click()");
+      if (!(await evaluate("Boolean(document.querySelector('.workspace-focus .breadcrumb .status-pill') && getComputedStyle(document.querySelector('.console-active > h1')).display === 'none')"))) {
+        throw new Error('Focus mode did not fold the title into the top bar.');
+      }
+      if (process.argv.includes('--screenshot')) {
+        const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+        await writeFile('dist/console-focus.png', Buffer.from(captured.data, 'base64'));
+      }
+      await evaluate("document.activeElement?.blur(); document.dispatchEvent(new KeyboardEvent('keydown', { key: '`', ctrlKey: true, bubbles: true }))");
+      if (!(await evaluate("Boolean(document.activeElement?.closest('.xterm'))"))) throw new Error('Ctrl+` did not focus the terminal.');
+      await evaluate("document.querySelector('[data-action=toggle-console-focus]').click()");
+      if (await evaluate("Boolean(document.querySelector('.workspace-focus'))")) throw new Error('Focus mode did not turn off.');
       if (process.argv.includes('--screenshot')) {
         const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
         await writeFile('dist/console-tab.png', Buffer.from(captured.data, 'base64'));
