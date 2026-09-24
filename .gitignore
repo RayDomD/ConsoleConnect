@@ -10,3 +10,5 @@ docs/mockups/sessions/
 .env
 .env.*
 !.env.example
+release-*/
+.vitest/
