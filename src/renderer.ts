@@ -388,11 +388,16 @@ function chatRoomMarkup(compact = false) {
 // Lucide "settings" icon (ISC license).
 const gearIcon = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>';
 
+const regionScrollSelectors = ['.task-list', '.desk', '.right-rail'];
+let renderedDeskKey = '';
+
 function render() {
   const previousChatStream = document.querySelector<HTMLElement>('#team-chat-stream');
   const previousChatScroll = previousChatStream?.scrollTop ?? 0;
   const chatWasAtBottom = !previousChatStream || previousChatStream.scrollHeight - previousChatStream.scrollTop - previousChatStream.clientHeight < 40;
   const chatInputFocused = document.activeElement?.id === 'team-chat-body';
+  // The shell is locked to the window, so these regions scroll themselves and innerHTML would reset them.
+  const previousRegionScroll = regionScrollSelectors.map(selector => document.querySelector(selector)?.scrollTop ?? 0);
   const motion = captureMotion(app);
   const editInputFocused = Boolean(document.activeElement?.closest('.chat-edit'));
   const renderedTask = snapshot?.tasks.find(task => task.id === selectedTaskId) ?? snapshot?.tasks[0];
@@ -501,6 +506,12 @@ function render() {
   }
   const chatStream = document.querySelector<HTMLElement>('#team-chat-stream');
   if (chatStream) chatStream.scrollTop = chatWasAtBottom ? chatStream.scrollHeight : previousChatScroll;
+  const deskKey = `${selected?.id}|${taskTab}|${showWorkspaceChat}`;
+  regionScrollSelectors.forEach((selector, index) => {
+    const region = document.querySelector(selector);
+    if (region && (selector !== '.desk' || deskKey === renderedDeskKey)) region.scrollTop = previousRegionScroll[index] ?? 0;
+  });
+  renderedDeskKey = deskKey;
   if (chatInputFocused) document.querySelector<HTMLTextAreaElement>('#team-chat-body')?.focus();
   if (editInputFocused) document.querySelector<HTMLTextAreaElement>('.chat-edit textarea')?.focus();
   playMotion(app, motion);
