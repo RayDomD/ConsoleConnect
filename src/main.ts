@@ -270,6 +270,8 @@ ipcMain.on('stop-watch-terminal', (_event, input: { taskId: string }) => {
   terminalWatches.delete(input.taskId);
 });
 ipcMain.on('terminal-write', (_event, input: { taskId: string; data: string }) => sessions.get(input.taskId)?.terminal.write(input.data));
+// The session's onExit cleans up and tells the renderer.
+ipcMain.on('terminal-kill', (_event, input: { taskId: string }) => sessions.get(input.taskId)?.terminal.kill());
 ipcMain.on('terminal-resize', (_event, input: { taskId: string; cols: number; rows: number }) => {
   if (input.cols > 0 && input.rows > 0) sessions.get(input.taskId)?.terminal.resize(input.cols, input.rows);
 });

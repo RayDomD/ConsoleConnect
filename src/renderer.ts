@@ -38,6 +38,7 @@ declare global {
       onTerminalSharingError(callback: (event: { taskId: string }) => void): void;
       terminalWrite(input: { taskId: string; data: string }): void;
       terminalResize(input: { taskId: string; cols: number; rows: number }): void;
+      terminalKill(input: { taskId: string }): void;
       onTerminalData(callback: (event: { taskId: string; data: string }) => void): void;
       onTerminalExit(callback: (event: { taskId: string; exitCode: number }) => void): void;
     };
@@ -74,6 +75,10 @@ const commitFieldDecisionIds = new Set<string>();
 let terminalTaskId: string | null = null;
 let terminalOutput = '';
 let terminalSessionActive = false;
+let terminalTool = '';
+let terminalStartedAt = 0;
+let terminalEndedAt = 0;
+let terminalDirectory = '';
 let watchedTaskId: string | null = null;
 let watchedOutput = '';
 let terminal: Terminal | null = null;
@@ -434,6 +439,28 @@ function taskBody(task: Task) {
   return `<h1>${escape(task.title)}</h1><div class="meta"><span class="status-pill status-pill-${task.status}"><i class="status-dot status-${task.status}" aria-hidden="true"></i>${escape(status.charAt(0).toUpperCase() + status.slice(1))}</span>${assignee ? `<span class="meta-person"><span class="avatar" aria-hidden="true">${escape(assignee.name.slice(0, 1).toUpperCase())}</span>${escape(assignee.name)}</span><span aria-hidden="true">·</span>` : ''}<span>Revision ${task.revision}</span></div><nav class="task-tabs" aria-label="Task sections">${tabs.map(tab => `<button class="task-tab ${taskTab === tab ? 'active' : ''}" data-action="task-tab" data-tab="${tab}" aria-current="${taskTab === tab ? 'page' : 'false'}">${tab.charAt(0).toUpperCase() + tab.slice(1)}</button>`).join('')}</nav><div class="task-tab-content">${taskTab === 'overview' ? `<p class="description">${escape(task.description)}</p>${['unassigned', 'awaiting_approval', 'ready'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : ''}` : ''}${taskTab === 'package' ? `${packageSummary}${['running', 'changes_requested', 'submitted'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : !task.package ? '<p class="description">No work package yet.</p>' : ''}` : ''}</div>`;
 }
 
+const toolNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', antigravity: 'Antigravity' };
+
+function elapsedLabel() {
+  const seconds = Math.max(0, Math.floor(((terminalSessionActive ? Date.now() : terminalEndedAt) - terminalStartedAt) / 1000));
+  const clock = (value: number) => String(value).padStart(2, '0');
+  const hours = Math.floor(seconds / 3600);
+  return hours ? `${hours}:${clock(Math.floor(seconds / 60) % 60)}:${clock(seconds % 60)}` : `${Math.floor(seconds / 60)}:${clock(seconds % 60)}`;
+}
+
+// The well flexes with the window, so xterm refits and the tool learns its new size whenever the container changes.
+const terminalResizeObserver = new ResizeObserver(() => {
+  if (!terminal || !terminalFit || !terminal.element?.isConnected) return;
+  terminalFit.fit();
+  if (terminalRenderSource === 'local' && terminalSessionActive && terminalTaskId) {
+    window.consoleConnect.terminalResize({ taskId: terminalTaskId, cols: terminal.cols, rows: terminal.rows });
+  }
+});
+setInterval(() => {
+  const elapsed = document.querySelector('.session-elapsed');
+  if (elapsed && terminalSessionActive) elapsed.textContent = elapsedLabel();
+}, 1000);
+
 const terminalFontFamily = "'JetBrains Mono', Consolas, monospace";
 const chatGroupWindowMs = 5 * 60 * 1000;
 
@@ -556,13 +583,15 @@ function render() {
       const sharedTerminal = snapshot.sharedTerminalTaskIds?.includes(selected.id) ?? false;
       const watching = selected.id === watchedTaskId;
       const canLaunch = mine && ['ready', 'running', 'changes_requested'].includes(selected.status) && !terminalSessionActive;
-      const launch = canLaunch ? `<div class="console-launch"><button data-action="start">${localTerminal ? 'New console' : 'Launch console'}</button><select id="tool" aria-label="Choose tool"><option value="codex">Codex</option><option value="claude">Claude Code</option><option value="antigravity">Antigravity</option></select></div>` : '';
+      const launch = canLaunch ? `<div class="console-launch"><select id="tool" aria-label="Choose tool">${Object.entries(toolNames).map(([id, name]) => `<option value="${id}" ${id === terminalTool ? 'selected' : ''}>${name}</option>`).join('')}</select><button data-action="start">${localTerminal ? 'New console' : 'Launch console'}</button></div>` : '';
       const controls = localTerminal && terminalSessionActive && connection?.mode !== 'supabase'
-        ? `<button class="secondary" data-action="toggle-terminal-sharing">${sharedTerminal ? 'Stop sharing' : 'Share view only'}</button>`
-        : watching ? '<button class="secondary" data-action="stop-watching">Stop watching</button>'
+        ? `<button class="text-button" data-action="toggle-terminal-sharing" aria-pressed="${sharedTerminal}">${sharedTerminal ? 'Stop sharing' : 'Share view only'}</button>`
+        : watching ? '<button class="text-button" data-action="stop-watching">Stop watching</button>'
           : sharedTerminal && !localTerminal && connection?.mode !== 'supabase' ? '<button class="secondary" data-action="watch-terminal">Watch shared console</button>' : '';
+      const stop = localTerminal && terminalSessionActive ? '<button class="text-button" data-action="stop-console">Stop</button>' : '';
+      const session = localTerminal && terminalTool ? `<span class="session-tool">${escape(toolNames[terminalTool] ?? terminalTool)}</span><span class="session-branch" title="console-connect/${escape(selected.id)}">console-connect/${escape(selected.id.slice(0, 8))}</span><span class="session-elapsed">${elapsedLabel()}</span>` : '';
       const status = localTerminal ? terminalSessionActive ? 'Running on this computer' : 'Previous session ended' : watching ? 'Shared view only' : 'No console open';
-      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="console-toolbar"><div><strong>Task console</strong><small>${status}</small></div><div class="console-controls">${controls}${launch}</div></div>${localTerminal || watching ? '<div id="terminal" aria-label="Task console output"></div>' : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
+      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}</div>${localTerminal || watching ? '<div id="terminal" aria-label="Task console output"></div>' : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
       if (localTerminal || watching) {
         terminalRenderSource = localTerminal ? 'local' : 'shared';
         terminalRenderedTaskId = selected.id;
@@ -585,6 +614,8 @@ function render() {
           }
         }
         if (localTerminal && terminalSessionActive) window.consoleConnect.terminalResize({ taskId: selected.id, cols: terminal.cols, rows: terminal.rows });
+        terminalResizeObserver.disconnect();
+        terminalResizeObserver.observe(container);
       }
     }
     if (taskTab === 'discussion') {
@@ -1004,11 +1035,16 @@ app.addEventListener('click', async event => {
       terminalTaskId = task.id;
       terminalOutput = '';
       terminalSessionActive = true;
+      terminalTool = tool; terminalStartedAt = Date.now(); terminalDirectory = '';
       const active = connection!;
       const access = active.mode === 'supabase' ? { ...active, token: await hostedAccessToken(active) } : active;
-      try { await window.consoleConnect.runTask({ ...access, taskId: task.id, tool, repositoryPath }); }
+      try { terminalDirectory = (await window.consoleConnect.runTask({ ...access, taskId: task.id, tool, repositoryPath })).directory; }
       catch (error) { terminalTaskId = null; terminalSessionActive = false; throw error; }
       await refresh();
+    }
+    if (action === 'stop-console') {
+      if (confirm('Stop this console? The tool ends and unsaved work in it may be lost.')) window.consoleConnect.terminalKill({ taskId: task.id });
+      return;
     }
     if (action === 'submit') await command(task, { type: 'submit-package' });
     if (action === 'accept') await command(task, { type: 'accept-package' });
@@ -1057,6 +1093,7 @@ window.consoleConnect.onTerminalData(event => {
 window.consoleConnect.onTerminalExit(event => {
   if (event.taskId !== terminalTaskId) return;
   terminalSessionActive = false;
+  terminalEndedAt = Date.now();
   const line = `\r\nProcess exited (${event.exitCode}).\r\n`;
   terminalOutput += line;
   if (terminalRenderSource === 'local') terminal?.write(line);

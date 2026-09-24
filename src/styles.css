@@ -85,7 +85,7 @@
 @font-face{font-family:'JetBrains Mono';font-style:normal;font-display:swap;font-weight:100 800;src:url(fonts/jetbrains-mono-latin-ext-wght-normal.woff2) format('woff2-variations');unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF}
 
 /* Tactile layer: tokens */
-:root{--font-display:'Newsreader',Georgia,serif;--font-ui:'Instrument Sans','Segoe UI',sans-serif;--ease-out:cubic-bezier(.23,1,.32,1);--ease-out-expo:cubic-bezier(.16,1,.3,1);
+:root{--font-display:'Newsreader',Georgia,serif;--font-ui:'Instrument Sans','Segoe UI',sans-serif;--font-mono:'JetBrains Mono',Consolas,monospace;--ease-out:cubic-bezier(.23,1,.32,1);--ease-out-expo:cubic-bezier(.16,1,.3,1);
 --ring:0 0 0 1px color-mix(in oklab,var(--color-text) 8%,transparent);
 --lift-1:var(--ring),0 1px 2px color-mix(in oklab,var(--color-text) 7%,transparent);
 --lift-2:var(--ring),0 1px 2px color-mix(in oklab,var(--color-text) 6%,transparent),0 12px 28px -14px color-mix(in oklab,var(--color-text) 22%,transparent);
@@ -216,6 +216,26 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .project-counts .project-quiet{color:var(--color-muted)}
 .project-row .project-folder{margin-top:12px;font-size:12px}
 .project-row .inline-link{padding:0;font-size:inherit;font-weight:600;color:var(--color-text);text-decoration:underline;text-underline-offset:3px}
+
+/* Console workspace: docked well with a session strip (1.10) */
+.session-strip{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;min-height:44px;padding:6px 10px 6px 14px;background:var(--color-surface);box-shadow:inset 0 -1px 0 var(--color-border);font-size:12px;color:var(--color-muted)}
+.session-tool{font-weight:600;color:var(--color-text)}
+.session-branch{font:12px var(--font-mono);color:var(--color-text)}
+.session-spacer{flex:1}
+.session-strip .text-button{padding:6px 8px;font-size:12px;font-weight:500}
+.session-strip .text-button:hover{background:var(--color-canvas)}
+.session-strip .text-button[aria-pressed=true]{background:var(--color-selection);color:var(--color-text)}
+.session-strip .console-launch select{width:150px;padding:6px 8px;font-size:13px}
+.session-strip .console-launch button{padding:7px 12px;font-size:12px}
+.console-workspace #terminal{padding:10px 14px}
+@media(min-width:901px){
+.desk-content.console-active{flex:1;min-height:0;display:flex;flex-direction:column;max-width:none;padding:16px 24px 20px}
+.console-active>h1{font-size:26px;margin:0 0 6px}
+.console-active .meta{margin:0 0 6px}
+.console-active .task-tab-content{flex:1;min-height:0;display:flex;flex-direction:column;padding-top:16px}
+.console-active .console-workspace{flex:1;min-height:0;display:flex;flex-direction:column}
+.console-active #terminal,.console-active .console-empty{flex:1;min-height:240px;height:auto}
+}
 
 /* Shell: locked to the window on desktop widths; only inner regions scroll */
 @media(min-width:901px){
