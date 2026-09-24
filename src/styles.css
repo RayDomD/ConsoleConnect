@@ -161,6 +161,14 @@ input:focus,textarea:focus,select:focus{outline:none;border-color:var(--color-ac
 .meta-person{display:inline-flex;align-items:center;gap:6px;margin-left:4px}
 .meta-person .avatar{width:22px;height:22px;font-size:11px;font-weight:700}
 
+/* Sidebar: New task as an icon, Team chat as a nav row (P4) */
+.aside-label{align-items:center;margin:30px 5px 8px}
+.aside-label .new-task{width:28px;height:28px;margin:-4px -4px -4px 0}
+.chat-link{margin-top:14px;padding:10px 12px;border:0;border-radius:8px;font-size:13px;font-weight:600}
+.chat-link:hover{background:color-mix(in oklab,var(--color-surface) 50%,transparent)}
+.chat-link.active{background:var(--color-surface);box-shadow:var(--lift-1)}
+.chat-link .chat-count{height:20px;min-width:20px;font-size:11px}
+
 /* Shell: locked to the window on desktop widths; only inner regions scroll */
 @media(min-width:901px){
 .workspace{height:100vh;min-height:0}

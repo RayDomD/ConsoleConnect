@@ -111,10 +111,10 @@ try {
   let visible = '';
   for (let attempt = 0; attempt < 30; attempt++) {
     visible = await evaluate('document.body.innerText');
-    if (visible.includes('Smoke team') && visible.includes('New task')) break;
+    if (visible.includes('Smoke team') && await evaluate("Boolean(document.querySelector('[data-action=new-task]'))")) break;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (!visible.includes('Smoke team') || !visible.includes('New task')) throw new Error(`Host form failed: ${visible.slice(0, 300)}`);
+  if (!visible.includes('Smoke team') || !(await evaluate("Boolean(document.querySelector('[data-action=new-task]'))"))) throw new Error(`Host form failed: ${visible.slice(0, 300)}`);
   await evaluate("document.querySelector('[data-action=disconnect]').click()");
   if (!(await evaluate("Boolean(document.querySelector('[data-action=open-project]'))"))) throw new Error('Dashboard did not retain the project.');
   if (process.argv.includes('--screenshot')) {
