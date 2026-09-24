@@ -372,7 +372,16 @@ function taskBody(task: Task) {
   return `<h1>${escape(task.title)}</h1><div class="meta"><span class="status-pill status-pill-${task.status}"><i class="status-dot status-${task.status}" aria-hidden="true"></i>${escape(status.charAt(0).toUpperCase() + status.slice(1))}</span>${assignee ? `<span class="meta-person"><span class="avatar" aria-hidden="true">${escape(assignee.name.slice(0, 1).toUpperCase())}</span>${escape(assignee.name)}</span><span aria-hidden="true">·</span>` : ''}<span>Revision ${task.revision}</span></div><nav class="task-tabs" aria-label="Task sections">${tabs.map(tab => `<button class="task-tab ${taskTab === tab ? 'active' : ''}" data-action="task-tab" data-tab="${tab}" aria-current="${taskTab === tab ? 'page' : 'false'}">${tab.charAt(0).toUpperCase() + tab.slice(1)}</button>`).join('')}</nav><div class="task-tab-content">${taskTab === 'overview' ? `<p class="description">${escape(task.description)}</p>${['unassigned', 'awaiting_approval', 'ready'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : ''}` : ''}${taskTab === 'package' ? `${packageSummary}${['running', 'changes_requested', 'submitted'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : !task.package ? '<p class="description">No work package yet.</p>' : ''}` : ''}</div>`;
 }
 
-function chatMessageMarkup(message: Message, messages: Message[]) {
+const chatGroupWindowMs = 5 * 60 * 1000;
+
+// Consecutive messages from one person on the same day, within five minutes, share one name, time, and avatar.
+function continuesGroup(previous: Message | undefined, message: Message | undefined) {
+  if (!previous || !message || previous.authorId !== message.authorId) return false;
+  const gap = new Date(message.createdAt).getTime() - new Date(previous.createdAt).getTime();
+  return gap <= chatGroupWindowMs && new Date(previous.createdAt).toDateString() === new Date(message.createdAt).toDateString();
+}
+
+function chatMessageMarkup(message: Message, messages: Message[], group: { continued: boolean; last: boolean }) {
   const author = snapshot!.members.find(member => member.id === message.authorId)?.name ?? 'Teammate';
   const mine = message.authorId === snapshot!.memberId;
   const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(new Date(message.createdAt));
@@ -383,17 +392,21 @@ function chatMessageMarkup(message: Message, messages: Message[]) {
   const content = editingMessageId === message.id && !message.deletedAt
     ? `<form class="chat-edit" data-message="${escape(message.id)}"><label>Edit message<textarea name="body" required maxlength="8000">${escape(editingDraft)}</textarea></label><div><button type="submit">Save edit</button><button type="button" class="secondary" data-action="cancel-edit">Cancel</button></div></form>`
     : `<div class="chat-bubble ${message.deletedAt ? 'chat-bubble-unsent' : ''}">${quote}${message.deletedAt ? 'Message unsent' : escape(message.body)}${message.editedAt && !message.deletedAt ? '<small>Edited</small>' : ''}</div>`;
-  return `<article class="chat-message ${mine ? 'chat-message-own' : ''}" data-message-id="${escape(message.id)}"><span class="chat-avatar" aria-hidden="true">${escape(author.slice(0, 1).toUpperCase())}</span><div class="chat-message-main"><div class="chat-message-meta">${escape(mine ? 'You' : author)} · ${escape(time)}</div>${content}${actions}</div></article>`;
+  const avatar = mine ? '' : group.last ? `<span class="chat-avatar" aria-hidden="true">${escape(author.slice(0, 1).toUpperCase())}</span>` : '<span class="chat-avatar chat-avatar-spacer" aria-hidden="true"></span>';
+  const meta = group.continued ? `<div class="sr-only">${escape(mine ? 'You' : author)} · ${escape(time)}</div>`
+    : `<div class="chat-message-meta">${mine ? '<span class="sr-only">You · </span>' : `${escape(author)} · `}${escape(time)}</div>`;
+  return `<article class="chat-message ${mine ? 'chat-message-own' : ''} ${group.continued ? 'chat-message-continued' : ''}" data-message-id="${escape(message.id)}">${avatar}<div class="chat-message-main">${meta}${content}${actions}</div></article>`;
 }
 
 function chatRoomMarkup(compact = false) {
   const messages = teamMessages();
   let previousDay = '';
-  const stream = messages.map(message => {
+  const stream = messages.map((message, index) => {
     const day = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(message.createdAt));
     const divider = day === previousDay ? '' : `<div class="chat-day">${escape(day)}</div>`;
     previousDay = day;
-    return divider + chatMessageMarkup(message, messages);
+    return divider + chatMessageMarkup(message, messages,
+      { continued: continuesGroup(messages[index - 1], message), last: !continuesGroup(message, messages[index + 1]) });
   }).join('');
   const reply = messages.find(message => message.id === replyingToId && !message.deletedAt);
   const replyAuthor = reply ? snapshot!.members.find(member => member.id === reply.authorId)?.name ?? 'Teammate' : '';

@@ -19,6 +19,19 @@
 .chat-compose-row textarea{border-radius:12px}
 .chat-drawer{padding:0;border-left:0;background:var(--color-surface);box-shadow:var(--lift-3)}
 .chat-toast{border:0;border-radius:12px;box-shadow:var(--lift-3)}
+/* Chat: grouping and quiet actions (P6) */
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.chat-message-continued{margin-top:-12px}
+.chat-avatar-spacer{visibility:hidden}
+.chat-message-continued .chat-bubble{border-top-left-radius:4px}
+.chat-message-own.chat-message-continued .chat-bubble{border-top-left-radius:14px;border-top-right-radius:4px}
+.chat-message-main{position:relative}
+.chat-message-actions{position:absolute;bottom:2px;left:calc(100% + 6px);flex-wrap:nowrap;gap:0;padding:2px;border-radius:8px;background:var(--color-surface);box-shadow:var(--lift-1);opacity:0;pointer-events:none;transition:opacity 150ms var(--ease-out)}
+.chat-message-own .chat-message-actions{left:auto;right:calc(100% + 6px)}
+.chat-message:hover .chat-message-actions,.chat-message:focus-within .chat-message-actions{opacity:1;pointer-events:auto}
+.chat-message-actions button{min-height:28px;padding:4px 8px;color:var(--color-muted)}
+.chat-room-compact .chat-message-actions{bottom:auto;top:-14px;left:auto;right:8px}
+.chat-room-compact .chat-message-own .chat-message-actions{right:auto;left:8px}
 @media (prefers-reduced-motion:no-preference){
 .chat-drawer-enter{animation:drawer-in 280ms var(--ease-out-expo)}
 .chat-toast-enter{animation:rise-in 240ms var(--ease-out)}

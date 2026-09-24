@@ -328,6 +328,15 @@ try {
   if (!(await hostCall('/state')).messages.find(message => message.id === replyId)?.deletedAt) throw new Error('Unsend did not reach the team chat.');
   await evaluate("document.querySelector('[data-action=close-chat-drawer]').click()");
   await evaluate("document.querySelector('[data-action=workspace-chat]').click(); document.querySelector('#workspace-message textarea[name=body]').value='Can someone review today?'; document.querySelector('#workspace-message').requestSubmit();");
+  const lastActions = "[...document.querySelectorAll('#team-chat-stream .chat-message')].at(-1)?.querySelector('.chat-message-actions')";
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("document.querySelector('#team-chat-stream')?.innerText.includes('Can someone review today?')")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (await evaluate(`getComputedStyle(${lastActions}).opacity !== '0'`)) throw new Error('Message actions show without hover or focus.');
+  await evaluate(`${lastActions}.querySelector('button').focus()`);
+  await new Promise(resolve => setTimeout(resolve, 250)); // Let the reveal finish.
+  if (await evaluate(`getComputedStyle(${lastActions}).opacity !== '1'`)) throw new Error('Message actions did not show on keyboard focus.');
   if (process.argv.includes('--screenshot')) {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/team-chat.png', Buffer.from(captured.data, 'base64'));
