@@ -8,6 +8,7 @@ import { hostedAccessToken, hostedProjects, hostedRequest, hostedSignIn, watchHo
 import { invitationLink, parseInvitationLink } from './invitations';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
+import { needsInput } from './console-state';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -82,6 +83,8 @@ let terminalTool = '';
 let terminalStartedAt = 0;
 let terminalEndedAt = 0;
 let terminalDirectory = '';
+let terminalLastOutputAt = 0;
+let terminalNeedsInput = false;
 let watchedTaskId: string | null = null;
 let watchedOutput = '';
 let terminal: Terminal | null = null;
@@ -459,9 +462,13 @@ const terminalResizeObserver = new ResizeObserver(() => {
     window.consoleConnect.terminalResize({ taskId: terminalTaskId, cols: terminal.cols, rows: terminal.rows });
   }
 });
+const localSessionNeedsInput = () => needsInput({ active: terminalSessionActive, lastOutputAt: terminalLastOutputAt, now: Date.now(),
+  terminalFocused: terminalRenderSource === 'local' && Boolean(terminal?.element?.contains(document.activeElement)) && document.hasFocus() });
 setInterval(() => {
   const elapsed = document.querySelector('.session-elapsed');
   if (elapsed && terminalSessionActive) elapsed.textContent = elapsedLabel();
+  // Re-render only when the inferred state flips, so the terminal and any focus stay put.
+  if (localSessionNeedsInput() !== terminalNeedsInput) { terminalNeedsInput = !terminalNeedsInput; render(); }
 }, 1000);
 
 // Session rail (R): open by default on wide windows; an explicit choice is remembered on this computer.
@@ -496,7 +503,8 @@ function sessionRailMarkup(task: Task) {
   if (task.id !== terminalTaskId) {
     return `<section><h2 class="section-label">This session</h2><p class="rail-meta">${task.id === watchedTaskId ? 'Watching a shared console, view only.' : 'No console on this computer for this task.'}</p></section>`;
   }
-  const state = terminalSessionActive ? '<span class="status-pill"><i class="status-dot status-running" aria-hidden="true"></i>Running</span>'
+  const state = terminalSessionActive && terminalNeedsInput ? '<span class="status-pill status-pill-input"><i class="status-dot status-awaiting_approval" aria-hidden="true"></i>Needs input</span>'
+    : terminalSessionActive ? '<span class="status-pill"><i class="status-dot status-running" aria-hidden="true"></i>Running</span>'
     : '<span class="status-pill status-pill-ended"><i class="status-dot status-completed" aria-hidden="true"></i>Ended</span>';
   const canDraft = task.assigneeId === snapshot?.memberId && ['running', 'changes_requested'].includes(task.status);
   return `<section><h2 class="section-label">This session</h2>${state}<p class="rail-meta">Started ${relativeTime(terminalStartedAt)} on this computer</p>${terminalDirectory ? `<p class="rail-meta rail-path" title="${escape(terminalDirectory)}">${escape(terminalDirectory)}</p>` : ''}</section><section><h2 class="section-label">Changed files</h2><div class="session-files">${changedFilesMarkup()}</div></section>${canDraft ? '<section><button class="rail-draft" data-action="task-tab" data-tab="package">Draft work package</button><p class="rail-meta">Stays private until you submit.</p></section>' : ''}`;
@@ -632,7 +640,7 @@ function render() {
       const stop = localTerminal && terminalSessionActive ? '<button class="text-button" data-action="stop-console">Stop</button>' : '';
       const session = localTerminal && terminalTool ? `<span class="session-tool">${escape(toolNames[terminalTool] ?? terminalTool)}</span><span class="session-branch" title="console-connect/${escape(selected.id)}">console-connect/${escape(selected.id.slice(0, 8))}</span><span class="session-elapsed">${elapsedLabel()}</span>` : '';
       const status = localTerminal ? terminalSessionActive ? 'Running' : 'Ended' : watching ? 'View only' : 'No console';
-      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button><button class="text-button" data-action="toggle-console-focus" aria-pressed="${consoleFocus}" title="Focus mode (F)">Focus<kbd>F</kbd></button></div>${localTerminal || watching ? '<div id="terminal" aria-label="Task console output"></div>' : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
+      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button><button class="text-button" data-action="toggle-console-focus" aria-pressed="${consoleFocus}" title="Focus mode (F)">Focus<kbd>F</kbd></button></div>${localTerminal || watching ? `<div id="terminal" aria-label="Task console output"></div>${localTerminal && terminalSessionActive && terminalNeedsInput ? `<div class="needs-input" role="status"><span aria-hidden="true">●</span>${escape(toolNames[terminalTool] ?? 'The tool')} may be waiting for you<span class="session-spacer"></span><button class="text-button" data-action="focus-terminal">Focus terminal<kbd>Ctrl</kbd><kbd>\`</kbd></button></div>` : ''}` : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
       if (localTerminal || watching) {
         terminalRenderSource = localTerminal ? 'local' : 'shared';
         terminalRenderedTaskId = selected.id;
@@ -1099,13 +1107,14 @@ app.addEventListener('click', async event => {
       terminalTaskId = task.id;
       terminalOutput = '';
       terminalSessionActive = true;
-      terminalTool = tool; terminalStartedAt = Date.now(); terminalDirectory = '';
+      terminalTool = tool; terminalStartedAt = Date.now(); terminalDirectory = ''; terminalLastOutputAt = Date.now(); terminalNeedsInput = false;
       const active = connection!;
       const access = active.mode === 'supabase' ? { ...active, token: await hostedAccessToken(active) } : active;
       try { terminalDirectory = (await window.consoleConnect.runTask({ ...access, taskId: task.id, tool, repositoryPath })).directory; }
       catch (error) { terminalTaskId = null; terminalSessionActive = false; throw error; }
       await refresh();
     }
+    if (action === 'focus-terminal') { terminal?.focus(); return; }
     if (action === 'toggle-console-focus') { consoleFocus = !consoleFocus; keyboardMove = true; render(); return; }
     if (action === 'toggle-session-rail') {
       localStorage.setItem(sessionRailKey, sessionRailOpen() ? 'closed' : 'open');
@@ -1157,6 +1166,7 @@ window.addEventListener('focus', () => {
 window.consoleConnect.onTerminalData(event => {
   if (event.taskId !== terminalTaskId) return;
   terminalOutput = (terminalOutput + event.data).slice(-100000);
+  terminalLastOutputAt = Date.now();
   if (terminalRenderSource === 'local') terminal?.write(event.data);
 });
 window.consoleConnect.onTerminalExit(event => {

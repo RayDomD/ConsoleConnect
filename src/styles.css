@@ -254,6 +254,12 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .rail-draft{width:100%;padding:9px 12px;font-size:13px}
 .session-strip kbd{margin-left:6px}
 
+/* Needs-input bar: inferred from quiet output until the readiness signal exists (1.10) */
+.needs-input{display:flex;align-items:center;gap:10px;padding:6px 10px 6px 14px;background:color-mix(in oklab,var(--color-warning) 10%,var(--color-surface));box-shadow:inset 0 1px 0 color-mix(in oklab,var(--color-warning) 22%,transparent);color:var(--color-warning);font-size:13px;font-weight:500}
+.needs-input .text-button{padding:6px 8px;font-size:12px;font-weight:500;color:var(--color-warning)}
+.needs-input kbd{margin-left:4px}
+.status-pill-input{background:color-mix(in oklab,var(--color-warning) 14%,var(--color-surface));color:var(--color-warning)}
+
 /* Focus mode (F): sidebar as status dots, title in the top bar, well edge to edge (1.10) */
 @media(min-width:901px){
 .workspace.workspace-focus{grid-template-columns:52px minmax(420px,1fr) 230px}
