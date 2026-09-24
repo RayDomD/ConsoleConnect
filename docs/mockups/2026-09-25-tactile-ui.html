@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Console Connect: current vs tactile</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--accent-hover:#234E3C;--on-accent:#FCFBF5;--selection:#DCE6D8;
+--ease-out:cubic-bezier(.23,1,.32,1);--ease-io:cubic-bezier(.65,0,.35,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Segoe UI',Arial,sans-serif;padding:28px}
+.head{max-width:1320px;margin:0 auto 18px}.head h1{font:500 22px/1.2 'Instrument Sans',sans-serif;margin:0 0 6px}.head p{margin:0;color:var(--muted);max-width:80ch}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:22px;max-width:1320px;margin:auto}
+.col>h2{font:600 13px 'Instrument Sans',sans-serif;margin:0 0 8px;color:var(--muted)}
+.frame{display:grid;grid-template-columns:200px 1fr;height:560px;border-radius:10px;overflow:hidden;background:var(--surface)}
+button{font:inherit;cursor:pointer}
+
+/* ---------- CURRENT (copied from styles.css) ---------- */
+.cur{border:1px solid var(--border)}
+.cur aside{background:var(--sidebar);border-right:1px solid var(--border);padding:22px 14px}
+.cur .ws{font:21px Georgia,serif;padding:14px 5px 20px;border-bottom:1px solid var(--border)}
+.cur .lbl{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--muted);margin:24px 5px 10px}
+.cur .task{display:block;width:100%;text-align:left;background:transparent;border:0;border-radius:6px;padding:12px;color:var(--text)}
+.cur .task:hover,.cur .task.on{background:var(--selection)}
+.cur .task strong{font-size:13px;font-weight:600;display:block}.cur .task small{font-size:12px;color:var(--muted)}
+.cur main{padding:30px 32px}
+.cur h3{font:400 32px/1.2 Georgia,serif;letter-spacing:-.04em;margin:0 0 14px}
+.cur .tabs{display:flex;gap:4px;border-bottom:1px solid var(--border)}
+.cur .tab{background:transparent;border:0;border-bottom:2px solid transparent;color:var(--muted);padding:10px 14px;font-weight:600}
+.cur .tab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.cur .panel{margin-top:20px;border:1px solid var(--border);border-radius:8px;padding:20px}
+.cur .panel p{margin:0 0 14px;color:var(--muted)}
+.cur .btn{border:0;border-radius:6px;background:var(--accent);color:var(--on-accent);padding:11px 16px;font-weight:600}
+.cur .btn:hover{background:var(--accent-hover)}
+.cur .btn2{border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);padding:11px 16px;font-weight:600;margin-left:10px}
+.cur .btn2:hover{background:var(--selection)}
+.cur .state{margin-top:14px;font-size:13px;color:var(--muted)}
+
+/* ---------- PROPOSED ---------- */
+.pro{font-family:'Instrument Sans',sans-serif;box-shadow:0 0 0 1px rgb(37 58 48/.07),0 1px 2px rgb(37 58 48/.05),0 12px 32px -12px rgb(37 58 48/.18)}
+.pro aside{background:var(--sidebar);padding:22px 12px;position:relative}
+.pro .ws{font:400 22px/1.15 Newsreader,serif;letter-spacing:-.01em;padding:14px 8px 18px}
+.pro .ws small{display:block;font:500 12px 'Instrument Sans';color:var(--muted);margin-top:6px;letter-spacing:0}
+.pro .lbl{font-size:12px;font-weight:500;color:var(--muted);margin:18px 8px 8px;display:flex;justify-content:space-between}
+.pro .lbl span{font-variant-numeric:tabular-nums}
+.pro .list{position:relative}
+.pro .ind{position:absolute;left:0;right:0;top:0;height:54px;border-radius:8px;background:var(--surface);box-shadow:0 0 0 1px rgb(37 58 48/.06),0 1px 3px rgb(37 58 48/.08);transition:transform 220ms var(--ease-out)}
+.pro .task{position:relative;display:grid;grid-template-columns:10px 1fr;gap:4px 10px;align-items:center;width:100%;height:54px;text-align:left;background:transparent;border:0;border-radius:8px;padding:0 10px;color:var(--text);transition:transform 120ms var(--ease-out)}
+.pro .task:active{transform:scale(.98)}
+.pro .task strong{font-size:13px;font-weight:600}.pro .task small{grid-column:2;font-size:12px;color:var(--muted);margin-top:-6px}
+.dot{width:8px;height:8px;border-radius:50%}
+.dot.run{background:var(--accent);box-shadow:0 0 0 3px rgb(45 98 75/.16)}
+.dot.rev{border:1.5px solid #805517}
+.dot.done{background:transparent;border:1.5px solid var(--muted);position:relative}
+.pro main{padding:30px 32px;background:var(--surface)}
+.pro h3{font:400 34px/1.05 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}
+.pro .meta{font-size:12px;color:var(--muted);margin-bottom:16px;font-variant-numeric:tabular-nums}
+.pro .meta code{font:12px 'JetBrains Mono',monospace;background:var(--canvas);padding:1px 5px;border-radius:4px}
+.pro .tabs{position:relative;display:flex;gap:2px;box-shadow:inset 0 -1px 0 var(--border)}
+.pro .tab{background:transparent;border:0;color:var(--muted);padding:10px 12px;font-weight:500;transition:color 150ms var(--ease-out)}
+.pro .tab:hover{color:var(--text)}.pro .tab.on{color:var(--text)}
+.pro .uline{position:absolute;bottom:0;left:0;height:2px;background:var(--accent);border-radius:2px;transform-origin:left;transition:transform 240ms var(--ease-out)}
+.pro .panel{margin-top:22px}
+.pro .panel p{margin:0 0 18px;color:var(--muted);max-width:52ch}
+.pro .btn{position:relative;border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:10px 16px;font-weight:600;
+box-shadow:inset 0 1px 0 rgb(255 255 255/.16),0 1px 2px rgb(20 40 30/.25),0 4px 10px -4px rgb(20 40 30/.35);transition:transform 120ms var(--ease-out),background-color 150ms var(--ease-out),box-shadow 150ms var(--ease-out)}
+.pro .btn:hover{background:var(--accent-hover)}
+.pro .btn:active{transform:scale(.97);box-shadow:inset 0 1px 2px rgb(0 0 0/.2)}
+.pro .btn2{border:0;border-radius:8px;background:transparent;color:var(--text);padding:10px 16px;font-weight:500;margin-left:8px;box-shadow:inset 0 0 0 1px var(--border);transition:transform 120ms var(--ease-out),background-color 150ms var(--ease-out)}
+.pro .btn2:hover{background:var(--canvas)}.pro .btn2:active{transform:scale(.97)}
+.pro button:focus-visible{outline:none;box-shadow:0 0 0 2px var(--surface),0 0 0 4px rgb(45 98 75/.55)}
+.pro .btn .lbl-t{display:inline-flex;align-items:center;gap:8px}
+.pro .check{width:14px;height:14px;stroke:currentColor;stroke-width:2.2;fill:none;stroke-dasharray:20;stroke-dashoffset:20}
+.pro .btn.ok{background:var(--accent-hover)}.pro .btn.ok .check{stroke-dashoffset:0;transition:stroke-dashoffset 260ms var(--ease-out) 40ms}
+.pro .toast{margin-top:16px;display:inline-flex;align-items:center;gap:8px;font-size:13px;padding:8px 12px;border-radius:8px;background:var(--selection);opacity:0;transform:translateY(4px);transition:opacity 180ms var(--ease-out),transform 180ms var(--ease-out)}
+.pro .toast.show{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.pro *{transition-duration:0ms!important}}
+
+.notes{max-width:1320px;margin:22px auto 0;display:grid;grid-template-columns:repeat(4,1fr);gap:18px;font-size:13px}
+.notes div{border-top:1px solid #CDD5C7;padding-top:10px}.notes b{display:block;font:600 13px 'Instrument Sans';margin-bottom:4px}.notes p{margin:0;color:var(--muted)}
+.snd{margin-top:10px;font:500 12px 'Instrument Sans';color:var(--muted);display:flex;gap:6px;align-items:center}
+</style></head><body>
+<div class="head"><h1>Same layout, same Forest palette. Press, hover, and switch tasks and tabs on both sides.</h1>
+<p>Left is the current app CSS, copied as written. Right keeps the Review Desk structure and changes only type, elevation, state marks, and tactile feedback.</p></div>
+
+<div class="cols">
+<div class="col"><h2>Current</h2>
+<div class="frame cur">
+ <aside><div class="ws">acme/web</div><div class="lbl">TASKS</div>
+  <button class="task on" data-g="c"><strong>Fix OAuth callback</strong><small>Running</small></button>
+  <button class="task" data-g="c"><strong>Invite flow copy</strong><small>In review</small></button>
+  <button class="task" data-g="c"><strong>Schema check script</strong><small>Done</small></button>
+ </aside>
+ <main><h3>Fix OAuth callback</h3>
+  <div class="tabs"><button class="tab on" data-t="c">Overview</button><button class="tab" data-t="c">Console</button><button class="tab" data-t="c">Discussion</button></div>
+  <div class="panel"><p>Sam submitted a result for review. Approving accepts the work package; the GitHub PR stays separate.</p>
+   <button class="btn" id="cA">Approve result</button><button class="btn2">Request changes</button>
+   <div class="state" id="cS"></div></div>
+ </main>
+</div></div>
+
+<div class="col"><h2>Proposed</h2>
+<div class="frame pro">
+ <aside><div class="ws">acme/web<small>3 people · private VPN</small></div><div class="lbl">Tasks <span>3</span></div>
+  <div class="list"><div class="ind" id="ind"></div>
+  <button class="task" data-i="0"><i class="dot run"></i><strong>Fix OAuth callback</strong><small>Running · Claude Code</small></button>
+  <button class="task" data-i="1"><i class="dot rev"></i><strong>Invite flow copy</strong><small>In review</small></button>
+  <button class="task" data-i="2"><i class="dot done"></i><strong>Schema check script</strong><small>Done</small></button></div>
+ </aside>
+ <main><h3 id="pt">Fix OAuth callback</h3><div class="meta">Assigned to Sam · branch <code>task/oauth-cb</code> · updated 14:02</div>
+  <div class="tabs" id="tabs"><button class="tab on">Overview</button><button class="tab">Console</button><button class="tab">Discussion</button><span class="uline" id="ul"></span></div>
+  <div class="panel"><p>Sam submitted a result for review. Approving accepts the work package; the GitHub PR stays separate.</p>
+   <button class="btn" id="pA"><span class="lbl-t"><svg class="check" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3L13 4.5"/></svg><span id="pAt">Approve result</span></span></button><button class="btn2">Request changes</button>
+   <div><span class="toast" id="toast">Work package accepted. Undo</span></div>
+   <label class="snd"><input type="checkbox" id="snd"> Soft click on press (optional, off by default)</label></div>
+ </main>
+</div></div>
+</div>
+
+<div class="notes">
+ <div><b>1. Type</b><p>Georgia + Segoe UI is the default pairing on every Windows box. A tuned serif and a real UI sans give the editorial feel you picked. Tabular figures on counts and times.</p></div>
+ <div><b>2. Tactility</b><p>Nothing in the app transitions today. Press scale 0.97, 120 to 240ms ease-out, a sliding selection and tab underline, and a check that draws on approve.</p></div>
+ <div><b>3. Elevation</b><p>Every panel is a 1px border box. Layered soft shadows and borderless sections read cleaner and quieter.</p></div>
+ <div><b>4. State marks</b><p>Status is plain text. Shape-coded dots (filled, ring, hollow) pair with the label so state reads at a glance, not by color alone.</p></div>
+</div>
+
+<script>
+// current: hard snaps
+document.querySelectorAll('.cur .task').forEach(b=>b.onclick=()=>{document.querySelectorAll('.cur .task').forEach(x=>x.classList.remove('on'));b.classList.add('on')});
+document.querySelectorAll('.cur .tab').forEach(b=>b.onclick=()=>{document.querySelectorAll('.cur .tab').forEach(x=>x.classList.remove('on'));b.classList.add('on')});
+cA.onclick=()=>{cS.textContent='Result approved.'};
+// proposed
+const names=['Fix OAuth callback','Invite flow copy','Schema check script'];
+document.querySelectorAll('.pro .task').forEach(b=>b.onclick=()=>{ind.style.transform=`translateY(${b.offsetTop}px)`;pt.textContent=names[b.dataset.i];tick()});
+const tabs=[...document.querySelectorAll('#tabs .tab')];
+function moveUl(t){ul.style.width='100px';ul.style.transform=`translateX(${t.offsetLeft}px) scaleX(${t.offsetWidth/100})`}
+tabs.forEach(t=>t.onclick=()=>{tabs.forEach(x=>x.classList.remove('on'));t.classList.add('on');moveUl(t);tick()});
+requestAnimationFrame(()=>moveUl(tabs[0]));
+let ok=false;pA.onclick=()=>{ok=!ok;pA.classList.toggle('ok',ok);pAt.textContent=ok?'Approved':'Approve result';toast.classList.toggle('show',ok);tick()};
+// optional audible "haptic" tick
+let ac;function tick(){if(!snd.checked)return;ac=ac||new AudioContext();const o=ac.createOscillator(),g=ac.createGain();o.type='sine';o.frequency.value=1800;g.gain.setValueAtTime(.05,ac.currentTime);g.gain.exponentialRampToValueAtTime(.0001,ac.currentTime+.03);o.connect(g).connect(ac.destination);o.start();o.stop(ac.currentTime+.035)}
+document.querySelectorAll('.pro .btn2').forEach(b=>b.addEventListener('pointerdown',tick));
+</script>
+</body></html>

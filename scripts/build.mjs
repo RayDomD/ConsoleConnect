@@ -11,3 +11,10 @@ await cp('src/discussion.css', 'dist/discussion.css');
 await cp('src/decisions.css', 'dist/decisions.css');
 await cp('src/terminal.css', 'dist/terminal.css');
 await cp('node_modules/@xterm/xterm/css/xterm.css', 'dist/xterm.css');
+await mkdir('dist/fonts', { recursive: true });
+for (const [pkg, file] of [
+  ['newsreader', 'newsreader-latin-opsz-normal.woff2'],
+  ['newsreader', 'newsreader-latin-ext-opsz-normal.woff2'],
+  ['instrument-sans', 'instrument-sans-latin-wght-normal.woff2'],
+  ['instrument-sans', 'instrument-sans-latin-ext-wght-normal.woff2'],
+]) await cp(`node_modules/@fontsource-variable/${pkg}/files/${file}`, `dist/fonts/${file}`);
