@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Console Connect: next improvements</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;
+--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums}
+.shell{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+nav{background:var(--sidebar);padding:24px 12px;position:sticky;top:0;height:100vh;overflow:auto}
+nav h1{font:400 22px/1.15 Newsreader,serif;margin:0 8px 4px}nav p{margin:0 8px 18px;color:var(--muted);font-size:12px}
+nav button{display:grid;grid-template-columns:28px 1fr;align-items:baseline;width:100%;text-align:left;border:0;background:transparent;color:var(--text);padding:9px 8px;border-radius:8px;font:500 13px 'Instrument Sans';cursor:pointer;transition:background-color 150ms var(--ease),transform 120ms var(--ease)}
+nav button:hover{background:rgb(252 251 245/.5)}nav button:active{transform:scale(.98)}nav button.on{background:var(--surface);box-shadow:var(--lift-1)}
+nav button b{color:var(--muted);font-weight:600;font-size:12px}
+nav .keys{margin:18px 8px 0;font-size:12px;color:var(--muted)}
+main{padding:32px 40px 60px;max-width:1240px}
+.win{display:none}.win.on{display:block;animation:in 220ms var(--ease)}@keyframes in{from{opacity:0;transform:translateY(4px)}}
+.win h2{font:400 32px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 8px}
+.why{color:var(--muted);max-width:72ch;margin:0 0 22px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+.pane>span{display:block;font:600 12px 'Instrument Sans';color:var(--muted);margin-bottom:8px}
+.frame{background:var(--surface);border-radius:10px;overflow:hidden;min-height:240px;box-shadow:var(--lift-2)}
+.frame.cur{box-shadow:none;border:1px solid var(--border)}
+.change{margin-top:18px;max-width:80ch}.change li{margin:4px 0}
+/* shared mini parts */
+.serif{font-family:Newsreader,serif;font-weight:400}
+.eb{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--accent)}
+.muted{color:var(--muted)}.sm{font-size:12px}
+.btn{display:inline-block;border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:8px 14px;font:600 13px 'Instrument Sans';box-shadow:inset 0 1px 0 rgb(255 255 255/.16),0 1px 2px rgb(20 40 30/.25)}
+.btn2{display:inline-block;border:0;border-radius:8px;background:transparent;color:var(--text);padding:8px 14px;font:500 13px 'Instrument Sans';box-shadow:inset 0 0 0 1px var(--border)}
+.cur .btn,.cur .btn2{border-radius:6px;box-shadow:none}.cur .btn2{border:1px solid var(--border)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);vertical-align:1px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 9px 2px 7px;border-radius:99px;background:var(--selection)}
+.av{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:50%;background:var(--selection);color:var(--accent);font-size:11px;font-weight:700;flex:none}
+.kbd{display:inline-block;min-width:20px;text-align:center;font:500 11px 'Instrument Sans';padding:1px 5px;border-radius:5px;background:var(--canvas);box-shadow:inset 0 -1px 0 var(--border),0 0 0 1px var(--border)}
+input.f{width:100%;border:1px solid var(--border);border-radius:6px;padding:7px;background:var(--surface);font:inherit}
+.row{display:flex;align-items:center;gap:10px}.sp{flex:1}
+.bubble{padding:9px 12px;border-radius:14px 14px 14px 4px;background:var(--surface);box-shadow:var(--lift-1);display:inline-block}
+.own .bubble{border-radius:14px 14px 4px 14px;background:var(--selection);box-shadow:none}
+</style></head><body>
+<div class="shell">
+<nav aria-label="Problems">
+ <h1>Next improvements</h1><p>Nine problems from the review. Current app on the left, proposed on the right.</p>
+ <button class="on" data-w="1"><b>P1</b>Uppercase labels everywhere</button>
+ <button data-w="2"><b>P2</b>Top bar wastes height</button>
+ <button data-w="3"><b>P3</b>Right rail is a cramped form</button>
+ <button data-w="4"><b>P4</b>Sidebar actions compete</button>
+ <button data-w="5"><b>P5</b>Action panel dead space</button>
+ <button data-w="6"><b>P6</b>Chat noise</button>
+ <button data-w="7"><b>P7</b>Projects rows say little</button>
+ <button data-w="8"><b>P8</b>No keyboard navigation</button>
+ <button data-w="9"><b>P9</b>Stray page scrollbar</button>
+ <div class="keys"><span class="kbd">↑</span> <span class="kbd">↓</span> to switch</div>
+</nav>
+<main>
+
+<!-- P1 -->
+<section class="win on" id="w1"><h2>P1. Uppercase labels on nearly every section</h2>
+<p class="why">"REVIEW DESK", "TASK / running", "TASKS", "TEAM", "DECISIONS", "YOUR WORKSPACES", "COMPUTER HOST". It's the most recognizable template habit left, and "TASK / running" repeats the status the sidebar already shows.</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="padding:28px 30px">
+  <div class="eb">TASK / running</div><div class="serif" style="font-size:36px;letter-spacing:-.03em;margin:10px 0 14px">Check claude launch</div>
+  <div class="sm muted" style="border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:12px 0">Assigned to Alex &nbsp;&nbsp; Revision 3</div>
+  <div class="eb" style="margin-top:26px">DECISIONS</div></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="padding:28px 30px">
+  <div class="serif" style="font-size:36px;letter-spacing:-.02em;line-height:1.05;margin:0 0 10px">Check claude launch</div>
+  <div class="row sm muted"><span class="pill"><i class="dot"></i>Running</span><span class="av">A</span>Alex<span>·</span>Revision 3</div>
+  <div style="font:600 13px 'Instrument Sans';margin-top:30px">Decisions</div></div></div>
+</div>
+<ul class="change"><li>Drop the task eyebrow; status becomes a dot and label next to the title.</li><li>Section headings in sentence case, UI font, 13px semibold.</li><li>Keep the "CONSOLE CONNECT" wordmark as the one uppercase element.</li></ul></section>
+
+<!-- P2 -->
+<section class="win" id="w2"><h2>P2. The top bar spends 76px on one label and two links</h2>
+<p class="why">It says "REVIEW DESK" on every screen and gives large text links to Chat and Projects. A slim bar with a breadcrumb tells you where you are and gives the height back to the terminal.</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="min-height:0">
+  <div class="row" style="height:76px;padding:0 30px;border-bottom:1px solid var(--border)"><span class="eb" style="color:var(--text)">REVIEW DESK</span><span class="sp"></span><span style="font-size:17px">Chat</span><span style="font-size:17px;margin-left:30px">Projects</span></div>
+  <div style="height:160px;background:var(--canvas)"></div></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="min-height:0">
+  <div class="row" style="height:48px;padding:0 20px;box-shadow:inset 0 -1px 0 var(--border)"><span class="muted sm">Smoke team</span><span class="muted sm">/</span><span class="sm" style="font-weight:600">Check claude launch</span><span class="sp"></span>
+   <span class="btn2" style="padding:5px 10px">Chat <span class="pill" style="background:var(--accent);color:var(--on-accent);padding:0 7px;margin-left:4px">2</span></span><span class="btn2" style="padding:5px 10px;box-shadow:none">Projects</span></div>
+  <div style="height:188px;background:var(--canvas)"></div></div></div>
+</div>
+<ul class="change"><li>48px bar: workspace / task breadcrumb, Chat with unread count, Projects.</li><li>Breadcrumb workspace segment returns to Projects, so the Projects link could go later.</li></ul></section>
+
+<!-- P3 -->
+<section class="win" id="w3"><h2>P3. The right rail is a cramped form</h2>
+<p class="why">A narrow column holds a raw host IP, a "Pushed commit SHA" field, and three outline buttons of equal weight. You can't tell what to do next.</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="padding:20px;background:var(--canvas);max-width:300px">
+  <div class="sm muted">Host address</div><div class="sm" style="font-weight:700">http://26.207.251.197:24680</div>
+  <div class="eb" style="margin:22px 0 10px">DECISIONS</div>
+  <div style="border:1px solid var(--border);border-radius:8px;padding:12px;background:var(--surface)"><b>Use OAuth</b><div class="sm muted">proposed</div><p class="sm" style="margin:8px 0">Use OAuth for sign-in.</p>
+   <span class="btn2" style="width:100%;text-align:center">Prepare Markdown</span><div class="sm" style="font-weight:600;margin:10px 0 4px">Pushed commit SHA</div><input class="f"><span class="btn2" style="width:100%;text-align:center;margin-top:10px">Verify and approve</span></div>
+  <span class="btn2" style="width:100%;text-align:center;margin-top:10px">Propose decision</span></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="padding:20px;background:var(--canvas);max-width:300px;box-shadow:none">
+  <div class="row sm"><i class="dot"></i><span>Hosting on this computer</span><span class="sp"></span><a class="muted" style="text-decoration:underline;text-underline-offset:3px">Copy address</a></div>
+  <div class="row" style="margin:24px 0 10px"><b style="font-size:13px">Decisions</b><span class="sp"></span><a class="sm muted">+ Propose</a></div>
+  <div style="border-radius:10px;padding:14px;background:var(--surface);box-shadow:var(--lift-1)"><div class="row"><b>Use OAuth</b><span class="sp"></span><span class="pill" style="background:#F1E6D2;color:var(--warning)">Proposed</span></div><p class="sm muted" style="margin:6px 0 12px">Use OAuth for sign-in.</p>
+   <span class="btn" style="width:100%;text-align:center">Prepare Markdown</span><div class="sm muted" style="margin-top:10px">Next: push it, then paste the commit to approve.</div></div></div></div>
+</div>
+<ul class="change"><li>Host address becomes a status line with a copy action.</li><li>Each decision shows one primary next step; the commit field appears only after Prepare.</li><li>"Propose decision" moves to a quiet header action.</li></ul></section>
+
+<!-- P4 -->
+<section class="win" id="w4"><h2>P4. Sidebar actions compete with the task's real action</h2>
+<p class="why">"+ New task" is a full-width green button and "Team chat" is a boxed button. The sidebar's loudest element should not outweigh "Claim task" on the desk.</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="background:var(--sidebar);padding:18px;max-width:260px">
+  <div class="eb" style="color:var(--muted);margin-bottom:8px">TASKS <span style="float:right">2</span></div>
+  <div style="padding:10px;border-radius:8px;background:var(--surface)"><b class="sm">Check claude launch</b><div class="sm muted">Running</div></div><div style="padding:10px"><b class="sm">Review login</b><div class="sm muted">Unassigned</div></div>
+  <span class="btn" style="width:100%;text-align:center;margin-top:10px;padding:11px">+ New task</span><span class="btn2" style="width:100%;margin-top:8px;padding:11px">Team chat</span></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="background:var(--sidebar);padding:18px;max-width:260px;box-shadow:none">
+  <div class="row" style="font:600 13px 'Instrument Sans';color:var(--muted);margin-bottom:8px">Tasks<span class="sp"></span><span class="av" style="width:22px;height:22px;background:transparent;color:var(--muted);font-size:16px;font-weight:400" title="New task">+</span></div>
+  <div style="padding:10px;border-radius:8px;background:var(--surface);box-shadow:var(--lift-1)"><b class="sm">Check claude launch</b><div class="sm muted">Running</div></div><div style="padding:10px"><b class="sm">Review login</b><div class="sm muted">Unassigned</div></div>
+  <div class="row sm" style="margin-top:18px;padding:10px;font-weight:600">Team chat<span class="sp"></span><span class="pill" style="background:var(--accent);color:var(--on-accent);padding:0 7px">2</span></div></div></div>
+</div>
+<ul class="change"><li>New task becomes a + icon button on the Tasks heading (also <span class="kbd">N</span>).</li><li>Team chat becomes a nav row with its unread count.</li></ul></section>
+
+<!-- P5 -->
+<section class="win" id="w5"><h2>P5. The action panel has dead space and awkward copy</h2>
+<p class="why">On an unassigned task the panel leaves an empty band above the buttons, and the meta row reads "Assigned to No one".</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="padding:24px">
+  <div class="sm muted">Assigned to No one &nbsp;&nbsp; Revision 1</div><p class="muted" style="margin:18px 0">Check the form</p>
+  <div style="border-radius:8px;border:1px solid var(--border);padding:44px 20px 20px"><span class="btn">Claim task</span> <span class="btn2" style="min-width:150px">Assign to… ▾</span> <span class="btn2">Assign</span></div></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="padding:24px">
+  <div class="row sm muted"><span class="pill" style="background:transparent;box-shadow:inset 0 0 0 1px var(--border)">Unassigned</span>Revision 1</div><p class="muted" style="margin:18px 0">Check the form</p>
+  <div style="border-radius:12px;box-shadow:var(--lift-2);padding:16px 18px"><div class="sm" style="font-weight:600;margin-bottom:10px">Nobody has this yet</div><div class="row"><span class="btn">Claim task</span><span class="muted sm">or</span><span class="btn2">Assign to teammate ▾</span></div></div></div></div>
+</div>
+<ul class="change"><li>Remove the leftover form margin at the top of the panel.</li><li>"Unassigned" as a status pill; one-line heading that says what's needed.</li><li>Merge the Assign select and button into one menu button.</li></ul></section>
+
+<!-- P6 -->
+<section class="win" id="w6"><h2>P6. Chat carries more chrome than messages</h2>
+<p class="why">Your own messages repeat your avatar, Reply / Edit / Unsend sit under every message, and consecutive messages from one person each repeat name and time.</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="padding:18px;background:var(--canvas)">
+  <div class="sm muted">Alex · 9:41</div><div class="bubble">OAuth callback is ready.</div><div class="sm" style="margin:4px 0 12px">Reply</div>
+  <div class="sm muted">Alex · 9:42</div><div class="bubble">Branch is on the package.</div><div class="sm" style="margin:4px 0 12px">Reply</div>
+  <div class="own" style="text-align:right"><div class="sm muted">You · 9:48</div><div class="row" style="justify-content:flex-end"><div class="bubble">I'll test Google sign-in.</div><span class="av">B</span></div><div class="sm" style="margin-top:4px">Reply &nbsp; Edit &nbsp; Unsend</div></div></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="padding:18px;background:var(--canvas);box-shadow:none">
+  <div class="row" style="align-items:flex-end"><span class="av">A</span><div><div class="sm muted">Alex · 9:41</div><div class="bubble">OAuth callback is ready.</div><div style="height:4px"></div><div class="bubble" style="border-radius:4px 14px 14px 4px">Branch is on the package.</div></div></div>
+  <div class="own" style="text-align:right;margin-top:16px"><div class="sm muted">9:48</div><div class="row" style="justify-content:flex-end;gap:6px"><span class="sm muted" style="background:var(--surface);box-shadow:var(--lift-1);border-radius:8px;padding:3px 8px">Reply · Edit · Unsend</span><div class="bubble">I'll test Google sign-in.</div></div><div class="sm muted" style="margin-top:4px">Actions show on hover or focus</div></div></div></div>
+</div>
+<ul class="change"><li>Group consecutive messages from one person within 5 minutes under one name, time, and avatar.</li><li>Drop the avatar and "You" on your own messages.</li><li>Message actions appear on hover or keyboard focus.</li></ul></section>
+
+<!-- P7 -->
+<section class="win" id="w7"><h2>P7. Project rows say little about the project</h2>
+<p class="why">Each row shows an uppercase host label, name, URL, and a folder hint. Nothing tells you whether anything needs you.</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="padding:22px;background:var(--canvas)">
+  <div class="eb">COMPUTER HOST</div><div class="serif" style="font-size:26px;margin:4px 0">Smoke team</div><div class="sm muted">https://github.com/example/demo</div><div class="sm muted" style="margin-top:8px">Local Git folder: Choose once to launch consoles without browsing each time</div>
+  <div style="margin-top:14px"><span class="btn2">Choose folder</span> <span class="btn">Open Review Desk</span></div></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="padding:22px;background:var(--canvas);box-shadow:none">
+  <div style="background:var(--surface);border-radius:12px;box-shadow:var(--lift-1);padding:18px"><div class="row"><div class="serif" style="font-size:26px">Smoke team</div><span class="sp"></span><span class="btn">Open</span></div>
+  <div class="sm muted">example/demo · Hosted on this computer · Opened 2h ago</div>
+  <div class="row sm" style="margin-top:12px;gap:14px"><span><i class="dot"></i> 2 running</span><span><i class="dot" style="background:var(--warning)"></i> 1 needs your review</span><span>3 unread in chat</span></div>
+  <div class="sm muted" style="margin-top:12px">No local folder yet. <a style="text-decoration:underline;text-underline-offset:3px">Choose folder</a></div></div></div></div>
+</div>
+<ul class="change"><li>Row shows what needs you: running tasks, reviews waiting, unread chat.</li><li>Host type folds into the meta line; folder prompt becomes a quiet inline link.</li><li>Needs a light summary from each workspace; hosted projects may need a query.</li></ul></section>
+
+<!-- P8 -->
+<section class="win" id="w8"><h2>P8. No keyboard navigation</h2>
+<p class="why">This is an operate surface people sit in all day. Fast, predictable keys will make it feel more precise than any animation.</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="padding:24px;display:grid;place-items:center"><p class="muted" style="text-align:center">Tab through every control.<br>No shortcuts.</p></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="padding:18px;background:var(--canvas)">
+  <div style="background:var(--surface);border-radius:12px;box-shadow:var(--lift-2);overflow:hidden">
+   <div style="padding:12px 14px;box-shadow:inset 0 -1px 0 var(--border)" class="muted">Jump to a task, person, or action…</div>
+   <div style="padding:6px"><div class="row" style="padding:8px;border-radius:8px;background:var(--selection)"><i class="dot"></i>Check claude launch<span class="sp"></span><span class="sm muted">Task</span></div>
+   <div class="row" style="padding:8px"><span class="av" style="width:18px;height:18px;font-size:10px">A</span>Alex<span class="sp"></span><span class="sm muted">Person</span></div>
+   <div class="row" style="padding:8px">Open team chat<span class="sp"></span><span class="kbd">C</span></div></div></div>
+  <div class="row sm muted" style="margin-top:14px;flex-wrap:wrap;gap:12px"><span><span class="kbd">Ctrl</span> <span class="kbd">K</span> jump</span><span><span class="kbd">J</span> <span class="kbd">K</span> tasks</span><span><span class="kbd">1</span>–<span class="kbd">4</span> tabs</span><span><span class="kbd">N</span> new task</span><span><span class="kbd">C</span> chat</span></div></div></div>
+</div>
+<ul class="change"><li>Single-key shortcuts only when focus is not in a text field or the terminal.</li><li>Ctrl+K palette over tasks, people, and actions.</li><li>No animation on keyboard-driven moves.</li></ul></section>
+
+<!-- P9 -->
+<section class="win" id="w9"><h2>P9. A page scrollbar shows on every screen</h2>
+<p class="why">The workspace, chat, and Projects page all show a vertical scrollbar even when the content fits. Some container is a few pixels taller than the window. The cause isn't traced yet.</p>
+<div class="pair">
+ <div class="pane"><span>Current</span><div class="frame cur" style="position:relative;height:240px;background:var(--canvas)"><div style="position:absolute;right:3px;top:4px;bottom:4px;width:8px;border-radius:4px;background:#d6d6d0"><div style="height:90%;border-radius:4px;background:#8f958d"></div></div><p class="muted" style="padding:24px">Content fits, but the window scrolls a few pixels.</p></div></div>
+ <div class="pane"><span>Proposed</span><div class="frame" style="height:240px;background:var(--canvas)"><p class="muted" style="padding:24px">No page scroll. Only the task list, chat stream, and terminal scroll inside their own regions.</p></div></div>
+</div>
+<ul class="change"><li>Trace the overflowing element in DevTools, then fix it at the source.</li><li>Lock the shell to the window height so only inner regions scroll.</li></ul></section>
+
+</main></div>
+<script>
+const btns=[...document.querySelectorAll('nav button')];
+function show(n){btns.forEach(b=>b.classList.toggle('on',b.dataset.w==n));document.querySelectorAll('.win').forEach(w=>w.classList.toggle('on',w.id==='w'+n));try{localStorage.setItem('cc-imp',n)}catch{}}
+btns.forEach(b=>b.onclick=()=>show(b.dataset.w));
+addEventListener('keydown',e=>{const i=btns.findIndex(b=>b.classList.contains('on'));if(e.key==='ArrowDown'&&i<8){e.preventDefault();show(i+2)}if(e.key==='ArrowUp'&&i>0){e.preventDefault();show(i)}});
+try{const s=localStorage.getItem('cc-imp');if(s)show(s)}catch{}
+</script>
+</body></html>

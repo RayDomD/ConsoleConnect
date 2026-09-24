@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q10: the worker side</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--danger:#A02F37;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 14px;color:var(--muted);max-width:104ch}
+.ctl{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.btn{border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:8px 14px;font:600 13px 'Instrument Sans';box-shadow:inset 0 1px 0 rgb(255 255 255/.16),0 1px 2px rgb(20 40 30/.25);cursor:pointer;transition:transform 120ms var(--ease)}
+.btn2{border:0;border-radius:8px;background:var(--surface);color:var(--text);padding:8px 14px;font:500 13px 'Instrument Sans';box-shadow:inset 0 0 0 1px var(--border);cursor:pointer;transition:transform 120ms var(--ease)}
+button:active{transform:scale(.97)}
+.meta{font-size:12px;color:var(--muted)}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.desc{font-size:12.5px;color:var(--muted);margin:0 0 10px;min-height:38px}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.win{border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2);height:440px;display:flex;flex-direction:column;position:relative}
+.bar{height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;box-shadow:inset 0 -1px 0 var(--border);font-size:12px}
+.tool{display:inline-flex;align-items:center;gap:6px;font-weight:600}.tool i{width:12px;height:12px;border-radius:3px;background:#C66B3D}
+.bar .sp{flex:1}
+.auto{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--warn-bg);color:var(--warning)}
+.term{flex:1;background:var(--well);padding:10px 12px;font:12px/1.65 'JetBrains Mono',monospace;overflow:hidden;display:flex;flex-direction:column}
+.term .d{color:#62676C}.term .c{color:#355CA8}.term .g{color:#346F4B}.term .p{color:#2D624B}.term .y{color:#805517}.term .r{color:#A02F37}
+.grow{flex:1;overflow:hidden}
+.new{animation:rise 260ms var(--ease) both}@keyframes rise{from{opacity:0;transform:translateY(6px)}}
+.input{border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);background:var(--surface);padding:7px 9px;min-height:34px}
+.input .hint{font:600 10.5px 'Instrument Sans';color:var(--warning);margin-bottom:2px}
+.cursor{display:inline-block;width:7px;height:13px;background:var(--accent);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}@keyframes blink{50%{opacity:0}}
+.gate{position:absolute;left:10px;right:10px;bottom:56px;background:var(--surface);border-radius:10px;box-shadow:var(--lift-2);padding:10px 12px;font-size:12px;display:none}
+.gate.on{display:block;animation:rise 240ms var(--ease)}
+.gate b{display:block;font-size:12.5px;margin-bottom:2px}.gate .row{display:flex;gap:6px;margin-top:8px}.gate .btn,.gate .btn2{padding:5px 10px;font-size:12px}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;font-size:12px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.table{margin-top:20px;border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);overflow:hidden;font-size:13px}
+.table .r{display:grid;grid-template-columns:1.4fr 1fr 1.3fr;gap:12px;padding:9px 14px;box-shadow:inset 0 -1px 0 var(--border)}
+.table .r:last-child{box-shadow:none}.table .h{font-size:12px;font-weight:600;color:var(--muted);background:var(--canvas)}
+.lock{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;box-shadow:inset 0 0 0 1px var(--border);color:var(--muted)}
+.code{font:12px 'JetBrains Mono',monospace}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q10 · Worker ↔ orchestrator, the other direction</div>
+<h1>When the orchestrator answers, requests changes, or a decision changes, how does it reach the worker's AI?</h1>
+<p class="lede">Each window is Sam's task console running Claude Code, partway through "Expired invite retry". Sam's AI can already ask with <span class="code">console-connect ask "…"</span>, which posts to the task discussion and reaches Blair's orchestrator as in Q8. Press the buttons to send replies back. Sam has stepped away.</p>
+<div class="ctl"><button class="btn" id="e1">Blair's orchestrator answers the question</button><button class="btn2" id="e2">Blair requests changes</button><button class="btn2" id="e3">The "Use OAuth" decision changes</button><button class="btn2" id="rs">Reset</button></div>
+
+<div class="opts">
+ <div class="opt sel" data-o="A"><div class="oh"><span class="l">A</span><b>Mirror the orchestrator</b><span class="rec">Recommended</span></div>
+  <p class="desc">Typed in by default. Sam can turn on auto for answers, with the same kind of setting as Q9. Change requests and decision changes always wait for Sam.</p>
+  <div class="win"><div class="bar"><span class="tool"><i></i>Claude Code</span><span class="meta">task/expired-invite-retry</span><span class="sp"></span><span class="auto">Auto: answers</span></div>
+   <div class="term"><div class="grow" id="tA"><div class="d">  Editing src/invitations.ts</div><div class="c">$ console-connect ask "Email the owner, or in-app only?"</div><div class="d">  Posted to Blair. Continuing with the banner meanwhile.</div></div>
+    <div class="input" id="iA"><span class="p">&gt;</span> <span class="cursor"></span></div></div>
+   <div class="gate" id="gA"></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>One mental model on both sides</li><li>Answers flow back without Sam relaying them</li><li>Rework and decision changes stay Sam's call</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Worker settings to learn (same pattern as Q9)</li></ul></div></div>
+ </div>
+
+ <div class="opt" data-o="B"><div class="oh"><span class="l">B</span><b>Always typed in</b></div>
+  <p class="desc">Everything is typed into Sam's console and waits for Enter. No auto on the worker side.</p>
+  <div class="win"><div class="bar"><span class="tool"><i></i>Claude Code</span><span class="meta">task/expired-invite-retry</span><span class="sp"></span></div>
+   <div class="term"><div class="grow" id="tB"><div class="d">  Editing src/invitations.ts</div><div class="c">$ console-connect ask "Email the owner, or in-app only?"</div><div class="d">  Posted to Blair. Continuing with the banner meanwhile.</div></div>
+    <div class="input" id="iB"><span class="p">&gt;</span> <span class="cursor"></span></div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Simplest, and the worker's AI never acts on someone else's words unseen</li></ul></div><div class="con"><b>Trade-off</b><ul><li>A quick "yes, in-app only" still waits until Sam is back</li></ul></div></div>
+ </div>
+
+ <div class="opt" data-o="C"><div class="oh"><span class="l">C</span><b>Always auto</b></div>
+  <p class="desc">Replies go straight into Sam's AI, and it acts on them.</p>
+  <div class="win"><div class="bar"><span class="tool"><i></i>Claude Code</span><span class="meta">task/expired-invite-retry</span><span class="sp"></span><span class="auto">Auto: all</span></div>
+   <div class="term"><div class="grow" id="tC"><div class="d">  Editing src/invitations.ts</div><div class="c">$ console-connect ask "Email the owner, or in-app only?"</div><div class="d">  Posted to Blair. Continuing with the banner meanwhile.</div></div>
+    <div class="input"><span class="p">&gt;</span> <span class="cursor"></span></div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Fastest loop</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Blair's words drive Sam's AI on Sam's machine unseen, which breaks "each person controls execution"</li><li>Decision changes skip the required acknowledgement</li></ul></div></div>
+ </div>
+</div>
+
+<div class="table">
+ <div class="r h"><span>Event reaching the worker</span><span>Default in A</span><span>Can the worker set it to auto?</span></div>
+ <div class="r"><span>Answer to a question their AI asked</span><span>Typed in</span><span>Yes, it's a reply to their own AI</span></div>
+ <div class="r"><span>Discussion comment on the task</span><span>Typed in</span><span>Yes</span></div>
+ <div class="r"><span>Changes requested on their package</span><span>Typed in, with a banner</span><span><span class="lock">Always asks</span> Rework is the owner's decision</span></div>
+ <div class="r"><span>A linked decision changed</span><span>Acknowledge in the app first</span><span><span class="lock">Always asks</span> The spec requires acknowledgement</span></div>
+</div>
+</div>
+<script>
+const add=(el,h)=>el.insertAdjacentHTML('beforeend',`<div class="new">${h}</div>`);
+function fire(k){
+ if(k==='e1'){
+  add(tA,'<div class="p">&gt; [from Blair via Codex] In-app notice only for now, no email.</div><div class="d">  Removing the email path from the banner action</div><div class="g">  ✓ Updated. Tests 34 passed</div>');
+  iB.innerHTML='<div class="hint">From Blair (via Codex) · not sent</div><span class="p">&gt;</span> Answer to your question: In-app notice only for now, no email. <span class="cursor"></span>';
+  add(tC,'<div class="p">&gt; [from Blair via Codex] In-app notice only for now, no email.</div><div class="d">  Removing the email path</div><div class="g">  ✓ Updated</div>');
+ }
+ if(k==='e2'){
+  iA.innerHTML='<div class="hint">Changes requested by Blair · not sent · press Enter to start the rework</div><span class="p">&gt;</span> Blair requested changes: the banner should also show when the link was already used. <span class="cursor"></span>';
+  iB.innerHTML='<div class="hint">Changes requested by Blair · not sent</div><span class="p">&gt;</span> Blair requested changes: the banner should also show when the link was already used. <span class="cursor"></span>';
+  add(tC,'<div class="p">&gt; [from Blair] Changes requested: also show when the link was already used.</div><div class="d">  Editing src/oauth-callback.ts …</div>');
+ }
+ if(k==='e3'){
+  gA.innerHTML='<b>The "Use OAuth" decision changed</b>Blair approved a new version: GitHub sign-in only. Acknowledge it before you submit. Your session keeps running until you decide.<div class="row"><button class="btn">Acknowledge and tell Claude Code</button><button class="btn2">View the change</button></div>';gA.classList.add('on');
+  iB.innerHTML='<div class="hint">Decision changed · acknowledge in the app first</div><span class="p">&gt;</span> The "Use OAuth" decision changed: GitHub sign-in only. <span class="cursor"></span>';
+  add(tC,'<div class="p">&gt; [from app] Decision changed: GitHub sign-in only.</div><div class="d">  Removing Google sign-in handling …</div><div class="r">  (not acknowledged by Sam)</div>');
+ }
+}
+function reset(){location.reload()}
+e1.onclick=()=>fire('e1');e2.onclick=()=>fire('e2');e3.onclick=()=>fire('e3');rs.onclick=reset;
+document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)));
+</script>
+</body></html>

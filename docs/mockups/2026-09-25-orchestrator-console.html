@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Console Connect: orchestrator console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--lift-3:var(--ring),0 2px 4px rgb(37 58 48/.06),0 24px 48px -16px rgb(37 58 48/.28);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:26px 30px 50px}
+.head{max-width:1400px;margin:0 auto 14px}.head h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.head p{margin:0;color:var(--muted);max-width:92ch}
+.steps{display:flex;gap:6px;max-width:1400px;margin:0 auto 14px;flex-wrap:wrap}
+.steps button{border:0;border-radius:8px;padding:8px 14px;background:transparent;color:var(--muted);font:500 13px 'Instrument Sans';cursor:pointer;transition:background-color 150ms var(--ease),transform 120ms var(--ease)}
+.steps button:active{transform:scale(.97)}.steps button.on{background:var(--surface);color:var(--text);box-shadow:var(--lift-1)}
+.steps b{font-weight:600;margin-right:6px;color:var(--accent)}
+.app{max-width:1400px;margin:auto;display:grid;grid-template-columns:220px 1fr 300px;height:620px;border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2);position:relative}
+.side{background:var(--sidebar);padding:16px 10px;font-size:13px;display:flex;flex-direction:column}
+.side .h{display:flex;justify-content:space-between;font-weight:600;color:var(--muted);margin:10px 10px 6px}
+.side .t{padding:8px 10px;border-radius:8px;display:grid;grid-template-columns:8px 1fr;gap:0 9px;align-items:center}.side .t small{grid-column:2;color:var(--muted);font-size:12px}
+.side .t.on,.side .nav.on{background:var(--surface);box-shadow:var(--lift-1)}
+.side .nav{display:flex;align-items:center;gap:8px;padding:9px 10px;border-radius:8px;font-weight:600}
+.side .new{animation:rise 260ms var(--ease) both}.side .new:nth-of-type(2){animation-delay:80ms}
+@keyframes rise{from{opacity:0;transform:translateY(6px)}}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent)}.ring{background:transparent;box-shadow:inset 0 0 0 1.5px var(--muted)}.warn{background:transparent;box-shadow:inset 0 0 0 1.5px var(--warning)}.sub{background:var(--warning)}
+.desk{display:flex;flex-direction:column;min-width:0}
+.bar{height:48px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px 0 20px;box-shadow:inset 0 -1px 0 var(--border);font-size:13px}.bar .m{color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 9px 2px 7px;border-radius:99px;background:var(--selection);color:var(--text)}
+.frame{display:flex;flex-direction:column;flex:1;min-height:0;margin:16px 20px 20px;border-radius:12px;overflow:hidden;box-shadow:var(--lift-2)}
+.strip{display:flex;align-items:center;gap:12px;padding:8px 10px 8px 14px;font-size:12px;color:var(--muted);background:var(--surface);box-shadow:inset 0 -1px 0 var(--border)}.strip .sp{flex:1}
+.tool{display:inline-flex;align-items:center;gap:7px;color:var(--text);font-weight:600}.tool i{width:16px;height:16px;border-radius:4px;background:#1F1F1F;display:inline-block}
+.code{font:12px 'JetBrains Mono',monospace}
+.term{flex:1;min-height:0;background:var(--well);padding:14px 18px;font:12.5px/1.65 'JetBrains Mono',monospace;overflow:hidden}
+.term .p{color:#2D624B}.term .d{color:#62676C}.term .c{color:#355CA8}.term .g{color:#346F4B}.term .y{color:#805517}
+.ghost{border:0;background:transparent;color:var(--muted);padding:6px 8px;border-radius:8px;font:500 12px 'Instrument Sans'}
+.btn{border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:7px 14px;font:600 12px 'Instrument Sans';box-shadow:inset 0 1px 0 rgb(255 255 255/.16),0 1px 2px rgb(20 40 30/.25);cursor:pointer}
+.btn2{border:0;border-radius:8px;background:transparent;color:var(--text);padding:7px 14px;font:500 12px 'Instrument Sans';box-shadow:inset 0 0 0 1px var(--border);cursor:pointer}
+.rail{background:var(--surface);box-shadow:inset 1px 0 0 var(--border);padding:16px;font-size:13px;overflow:auto}
+.rail h4{margin:0 0 10px;font:600 13px 'Instrument Sans';display:flex;justify-content:space-between}.rail h4 span{color:var(--muted);font-weight:500}
+.rail .grp{font-size:12px;color:var(--muted);margin:14px 0 6px}
+.item{display:grid;grid-template-columns:8px 1fr auto;gap:2px 9px;align-items:center;padding:8px 10px;border-radius:8px}.item small{grid-column:2/4;color:var(--muted);font-size:12px}
+.item.hot{background:#F6EEDF}
+.via{font-size:11px;color:var(--muted);padding:0 6px;border-radius:99px;box-shadow:inset 0 0 0 1px var(--border)}
+.act{margin-top:16px;padding-top:12px;box-shadow:inset 0 1px 0 var(--border);font-size:12px;color:var(--muted)}.act div{padding:3px 0}
+.scrim{position:absolute;inset:0;background:rgb(37 58 48/.18);display:grid;place-items:center}
+.modal{width:440px;background:var(--surface);border-radius:14px;box-shadow:var(--lift-3);padding:20px;animation:pop 260ms cubic-bezier(.16,1,.3,1)}@keyframes pop{from{opacity:0;transform:scale(.97)}}
+.modal h3{font:400 22px/1.2 Newsreader,serif;margin:4px 0 8px}.modal p{margin:0 0 12px;color:var(--muted);font-size:13px}
+.draft{background:var(--canvas);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:14px}
+.row{display:flex;gap:8px;align-items:center}.sp{flex:1}
+.view{display:none}.view.on{display:contents}
+.caption{max-width:1400px;margin:14px auto 0;display:grid;grid-template-columns:1fr 1fr;gap:28px;font-size:13px}
+.caption div{border-top:1px solid var(--border);padding-top:10px}.caption b{display:block;margin-bottom:4px}.caption p{margin:0;color:var(--muted)}
+</style></head><body>
+<div class="head"><h1>How the orchestrator console works</h1>
+<p>A walkthrough in four steps. You're Blair. The orchestrating tool here is Codex, but any of the three works the same way, because they all call the same <span class="code">console-connect</span> command through your open app.</p></div>
+<div class="steps"><button class="on" data-s="1"><b>1</b>Open the orchestrator</button><button data-s="2"><b>2</b>It hands out work</button><button data-s="3"><b>3</b>Work comes back</button><button data-s="4"><b>4</b>You confirm the review</button></div>
+
+<div class="app" id="app">
+ <aside class="side">
+  <div class="nav on" id="navO"><span class="dot" style="background:var(--text)"></span>Orchestrator</div>
+  <div class="nav" style="font-weight:500">Team chat</div>
+  <div class="h"><span>Tasks</span><span id="cnt">1</span></div>
+  <div class="t"><i class="dot ring"></i>Review login<small>Unassigned</small></div>
+  <div id="newTasks"></div>
+ </aside>
+ <div class="desk">
+  <div class="bar"><span class="m">Smoke team</span><span class="m">/</span><b>Orchestrator</b><span class="pill" style="margin-left:4px">Main folder · no worktree</span><span class="sp"></span><button class="ghost">Chat</button><button class="ghost">Projects</button></div>
+  <div class="frame">
+   <div class="strip"><span class="tool"><i></i>Codex</span><span class="code" style="color:var(--text)">main</span><span>C:\work\demo</span><span class="sp"></span><button class="ghost">Share view only</button><button class="ghost">Stop</button></div>
+   <div class="term" id="term"></div>
+  </div>
+ </div>
+ <aside class="rail">
+  <h4>Assigned by me <span id="acount">0</span></h4>
+  <div id="rail"><p style="color:var(--muted);font-size:13px;margin:0">Nothing handed out yet. Tasks you or your orchestrator assign show up here, grouped by where they stand.</p></div>
+  <div class="act" id="act"><div style="font-weight:600;color:var(--text);margin-bottom:4px">CLI activity</div><div>Codex connected through this app</div></div>
+ </aside>
+ <div class="scrim" id="scrim" hidden><div class="modal">
+  <div class="row"><span class="pill" style="background:#F6EEDF;color:var(--warning)">Needs your confirmation</span><span class="sp"></span><span class="via">via Codex</span></div>
+  <h3>Accept "Expired invite retry"?</h3>
+  <p>Codex read Sam's work package and prepared this review. Nothing is sent until you confirm. GitHub PR approval stays separate.</p>
+  <div class="draft">"Tests pass and the retry copy matches the decision. Accepting."</div>
+  <div class="row"><button class="btn2">Edit review</button><button class="btn2">Request changes instead</button><span class="sp"></span><button class="btn">Accept package</button></div>
+ </div></div>
+</div>
+
+<div class="caption"><div id="c1"></div><div id="c2"></div></div>
+
+<script>
+const T={
+1:`<div class="d">Console Connect orchestrator · Codex · the console-connect command is ready</div><div style="margin-top:8px"><span class="p">›</span> Split the invite work into tasks for Sam and Casey.</div><div class="d">  Running console-connect task list --json</div><div class="d">  1 open task, 3 members (Blair, Sam, Casey)</div>`,
+2:`<div class="d">Console Connect orchestrator · Codex</div><div style="margin-top:8px"><span class="p">›</span> Split the invite work into tasks for Sam and Casey.</div><div class="d">  Running console-connect task list --json</div><div class="c">$ console-connect task create "Expired invite retry" --assign sam</div><div class="g">  ✓ Created and assigned to Sam · waiting for Sam's approval</div><div class="c">$ console-connect task create "Invite email copy" --assign casey</div><div class="g">  ✓ Created and assigned to Casey · waiting for Casey's approval</div><div style="margin-top:6px">Two tasks handed out. Sam and Casey approve and run them on their own computers with their own tools.</div>`,
+3:`<div class="d">Console Connect orchestrator · Codex</div><div style="margin-top:8px"><span class="p">›</span> What came back?</div><div class="c">$ console-connect package show expired-invite-retry --json</div><div class="d">  Sam submitted: retry banner, 3 files, 32 tests passed, PR #41 open</div><div style="margin-top:6px">Sam's package is ready. It looks complete. Want me to prepare an acceptance for you to confirm?</div><div style="margin-top:6px"><span class="p">›</span> yes</div><div class="c">$ console-connect review propose expired-invite-retry --accept --note "..."</div><div class="y">  ● Sent to your app for confirmation</div>`,
+};
+const RAIL={
+1:null,
+2:`<div class="grp">Waiting for their approval</div><div class="item"><i class="dot warn"></i>Expired invite retry<span class="via">via Codex</span><small>Sam · assigned just now</small></div><div class="item"><i class="dot warn"></i>Invite email copy<span class="via">via Codex</span><small>Casey · assigned just now</small></div>`,
+3:`<div class="grp">Ready for your review</div><div class="item hot"><i class="dot sub"></i>Expired invite retry<span class="via">via Codex</span><small>Sam submitted · 3 files · PR #41</small></div><div class="grp">Running</div><div class="item"><i class="dot"></i>Invite email copy<span class="via">via Codex</span><small>Casey · Antigravity · 8 min</small></div>`,
+};
+const ACT={1:['Codex connected through this app'],2:['Codex connected through this app','Created 2 tasks as Blair','Assigned to Sam and Casey'],3:['Codex connected through this app','Created 2 tasks as Blair','Read 1 work package','Proposed 1 review, waiting for you']};
+const CAP={
+1:['You open it once per workspace','Orchestrator sits above Team chat. Pick Codex, Antigravity, or Claude Code. It runs in your main project folder, not a task worktree, with the console-connect command already on its PATH.'],
+2:['It acts as you, and says so','Tasks are created as Blair and marked "via Codex". Sam and Casey still approve before anything runs on their computers, and they choose their own tools.'],
+3:['Results come back to your rail','"Assigned by me" groups everything you handed out by where it stands. The orchestrator can read packages and suggest a review.'],
+4:['Approvals stay with you','Accepting, requesting changes, and approving decisions always stop at this confirmation in the app. The CLI can propose; only your click decides.'],
+};
+function show(s){
+ document.querySelectorAll('.steps button').forEach(b=>b.classList.toggle('on',b.dataset.s==s));
+ term.innerHTML=T[Math.min(s,3)];
+ const r=RAIL[Math.min(s,3)];if(r)rail.innerHTML=r;
+ acount.textContent=s>=2?2:0;
+ act.innerHTML='<div style="font-weight:600;color:var(--text);margin-bottom:4px">CLI activity</div>'+ACT[Math.min(s,3)].map(x=>`<div>${x}</div>`).join('');
+ newTasks.innerHTML=s>=2?`<div class="t new"><i class="dot ${s>=3?'sub':'warn'}"></i>Expired invite retry<small>${s>=3?'Submitted':'Awaiting approval'} · Sam</small></div><div class="t new"><i class="dot ${s>=3?'':'warn'}"></i>Invite email copy<small>${s>=3?'Running':'Awaiting approval'} · Casey</small></div>`:'';
+ cnt.textContent=s>=2?3:1;
+ scrim.hidden=s!=4;
+ c1.innerHTML=`<b>${CAP[s][0]}</b><p>${CAP[s][1]}</p>`;
+ c2.innerHTML=s==1?'<b>Also works outside the app</b><p>Any terminal can run console-connect while the app is open. The built-in console is just the pre-wired path, and teammates can watch it through view-only sharing.</p>':'<b>Nothing here needs a new AI</b><p>The orchestrator is whichever tool you picked, using the same commands a person could type.</p>';
+}
+document.querySelectorAll('.steps button').forEach(b=>b.onclick=()=>show(+b.dataset.s));show(1);
+</script>
+</body></html>

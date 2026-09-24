@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q14: a built-in way to plan and build</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--blue:#355CA8;--blue-bg:#E4EAF1;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 18px;color:var(--muted);max-width:112ch}
+.code{font:12px 'JetBrains Mono',monospace}
+h3.sec{font:600 14px 'Instrument Sans';margin:0 0 10px}
+.pipe{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:8px}
+.stage{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:12px;font-size:12.5px;cursor:pointer;transition:box-shadow 150ms var(--ease),transform 120ms var(--ease);position:relative}
+.stage:active{transform:scale(.98)}.stage.on{box-shadow:0 0 0 2px var(--accent)}
+.stage .n{font-size:11px;font-weight:600;color:var(--accent)}.stage b{display:block;font-size:14px;margin:2px 0 6px}
+.stage .art{font:11.5px 'JetBrains Mono',monospace;color:var(--blue)}
+.stage .gate{margin-top:8px;font-size:11.5px;padding:3px 8px;border-radius:8px;background:var(--warn-bg);color:var(--warning);display:inline-block}
+.stage .uses{margin-top:6px;color:var(--muted);font-size:11.5px}
+.detail{display:grid;grid-template-columns:1.25fr 1fr;gap:20px;margin:14px 0 26px;align-items:start}
+.win{border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2);min-height:330px;display:flex;flex-direction:column}
+.bar{height:40px;display:flex;align-items:center;gap:8px;padding:0 14px;box-shadow:inset 0 -1px 0 var(--border);font-size:12.5px}.bar .m{color:var(--muted)}
+.term{background:var(--well);padding:10px 14px;font:11.8px/1.65 'JetBrains Mono',monospace;flex:1}
+.term .c{color:#355CA8}.term .d{color:#62676C}.term .p{color:#2D624B}.term .g{color:#346F4B}.term .y{color:#805517}.term .h{color:var(--text);font-weight:500;margin-top:5px}
+.ex h4{font:400 21px/1.15 Newsreader,serif;margin:0 0 8px}.ex p{margin:0 0 10px;color:var(--muted);font-size:13px}.ex ul{margin:0;padding-left:18px;color:var(--muted);font-size:13px}.ex li{margin:3px 0}
+.rule{font-size:12px;border-radius:8px;background:var(--surface);box-shadow:var(--lift-1);padding:9px 11px;margin-top:12px}.rule b{display:block;margin-bottom:2px}
+.tree{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:12px 16px;font:12px/1.75 'JetBrains Mono',monospace}
+.tree .c{color:var(--muted);font-family:'Instrument Sans';font-size:12px}
+.two{display:grid;grid-template-columns:1fr 1.35fr;gap:20px;margin-bottom:24px}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.opt p{margin:0 0 8px;font-size:13px;color:var(--muted)}
+.mini{border-radius:10px;background:var(--surface);box-shadow:var(--lift-1);padding:10px;font-size:12px;margin-bottom:8px}
+.mini .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.chip{font-size:11px;padding:2px 8px;border-radius:99px;background:var(--canvas)}.chip.on{background:var(--accent);color:var(--on-accent)}.chip.done{background:var(--selection)}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.scope{margin-top:18px;border-radius:10px;background:var(--warn-bg);color:var(--warning);padding:10px 14px;font-size:13px}.scope b{color:var(--text)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q14 · A built-in way to plan and build</div>
+<h1>Every workspace starts with the same systematic path from idea to shipped work</h1>
+<p class="lede">This is the same flow you use yourself (grill, spec, tickets, implement, review), built on what Console Connect already has. Each stage writes a real file to the repo, and each gate is an existing mechanism: decisions, tasks, packages, and GitHub. Any orchestrator tool runs the stages with <span class="code">console-connect playbook &lt;stage&gt;</span>, which prints the instructions for that stage. Click a stage.</p>
+
+<h3 class="sec">The path</h3>
+<div class="pipe" id="pipe"></div>
+<div class="detail"><div class="win" id="win"></div><div class="ex" id="ex"></div></div>
+
+<div class="two">
+ <div><h3 class="sec">The default docs structure</h3>
+  <div class="tree">docs/<br>
+  ├─ README.md <span class="c">project map (Q13), with protected tags</span><br>
+  ├─ specification.md <span class="c">what the product is · protected</span><br>
+  ├─ ideas/ <span class="c">grilling outcomes, one per idea</span><br>
+  ├─ specs/ <span class="c">feature specs from ideas</span><br>
+  ├─ plans/ <span class="c">approved plans, status in frontmatter</span><br>
+  ├─ decisions/ <span class="c">official decisions (app-written) · protected</span><br>
+  ├─ adr/ <span class="c">architecture records · protected</span><br>
+  ├─ mockups/ <span class="c">saved design decisions</span><br>
+  └─ session-summaries/ <span class="c">what shipped vs. planned</span><br>
+  PRODUCT.md · DESIGN.md <span class="c">brand · protected</span></div></div>
+ <div><h3 class="sec">How it's set up</h3>
+  <div class="win" style="min-height:0"><div class="bar"><b>New workspace</b><span class="m">· step 3 of 3</span></div>
+   <div style="padding:14px 16px;font-size:13px">
+    <b style="font-size:15px">Set up the project docs?</b><p style="color:var(--muted);margin:4px 0 10px">Console Connect found <span class="code">README.md</span> and <span class="code">docs/specification.md</span>. It will add the missing folders and a project map on a branch, and open a pull request for you to review. Nothing existing is overwritten.</p>
+    <div class="mini" style="margin:0 0 10px"><span class="code">+ docs/README.md · + docs/ideas/ · + docs/specs/ · + docs/plans/ · + docs/decisions/ · + docs/adr/ · + docs/mockups/ · + docs/session-summaries/</span></div>
+    <div style="display:flex;gap:8px"><button style="border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:8px 14px;font:600 13px 'Instrument Sans'">Create docs PR</button><button style="border:0;border-radius:8px;background:transparent;padding:8px 14px;font:500 13px 'Instrument Sans';box-shadow:inset 0 0 0 1px var(--border)">Use my own structure</button><button style="border:0;background:none;color:var(--muted);font:500 13px 'Instrument Sans'">Skip</button></div></div></div></div>
+</div>
+
+<h3 class="sec">How strongly should the app hold teams to this path?</h3>
+<div class="opts">
+ <div class="opt" data-o="A"><div class="oh"><span class="l">A</span><b>Playbooks and scaffold only</b></div>
+  <p>Docs structure plus <span class="code">console-connect playbook</span> for each stage. There's no stage tracking in the app, so people follow it if they choose.</p>
+  <div class="mini"><div class="row"><span class="chip">grill</span><span class="chip">spec</span><span class="chip">tickets</span><span class="chip">build</span><span class="chip">review</span></div><div style="color:var(--muted);margin-top:6px">Commands only. The app doesn't know where an idea stands.</div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Smallest build</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Easy to skip stages, so it's not really systematic</li></ul></div></div></div>
+ <div class="opt sel" data-o="B"><div class="oh"><span class="l">B</span><b>Guided path, skippable stages</b><span class="rec">Recommended</span></div>
+  <p>Each idea gets a card showing its stage, its files, and the next step. Stages can be skipped with a one-line reason, for example "small fix, no spec".</p>
+  <div class="mini"><b>Session timeout</b><div class="row" style="margin-top:6px"><span class="chip done">grill ✓</span><span class="chip done">spec ✓</span><span class="chip on">tickets</span><span class="chip">build</span><span class="chip">review</span></div><div style="color:var(--muted);margin-top:6px">Next: split the spec into tasks · Blair</div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Systematic by default, flexible when sensible</li><li>Everyone sees where each idea is</li><li>Skips are recorded, not hidden</li></ul></div><div class="con"><b>Trade-off</b><ul><li>A new "idea" record and card surface to build</li></ul></div></div></div>
+ <div class="opt" data-o="C"><div class="oh"><span class="l">C</span><b>Strict gates</b></div>
+  <p>A task can't be created without an approved spec, and a spec can't exist without a finished grilling.</p>
+  <div class="mini"><div class="row"><span class="chip done">grill ✓</span><span class="chip on">spec</span><span class="chip" style="opacity:.5">tickets 🔒</span><span class="chip" style="opacity:.5">build 🔒</span></div><div style="color:var(--muted);margin-top:6px">"New task" is disabled until the spec is approved.</div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Maximum discipline</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Blocks hotfixes and small tasks</li><li>Teams will work around it</li></ul></div></div></div>
+</div>
+<div class="scope"><b>Scope note:</b> this is a feature of its own, next to the orchestrator. I'd lock the direction here and give its stages a short grilling of their own after we finish the orchestrator, rather than design it all inside this session.</div>
+</div>
+<script>
+const ST=[
+{n:'Idea',b:'Capture',art:'Idea card',gate:'None',uses:'Anyone, in chat or the app',
+ w:`<div class="bar"><b>Ideas</b><span class="m">· New idea</span></div><div style="padding:16px;font-size:13px"><b style="font-size:15px">Session timeout feels too long</b><p style="color:var(--muted);margin:4px 0 12px">Raised by Casey from team chat · 2 teammates agree</p><div class="mini">Next: start a grilling session in the orchestrator console.</div></div>`,
+ e:`<h4>Ideas are cheap to capture</h4><p>Anyone can turn a chat message or thought into an idea card. Nothing is committed yet, and it's just a record in the workspace.</p>`},
+{n:'Stage 1',b:'Grill',art:'docs/ideas/…md',gate:'Owner or Reviewer marks it ready',uses:'Orchestrator runs playbook grill',
+ w:`<div class="bar"><b>Orchestrator</b><span class="m">· Codex · grilling "Session timeout"</span></div><div class="term"><div class="c">$ console-connect playbook grill "Session timeout"</div><div class="d">  Loaded: grill one question at a time, recommend an answer,</div><div class="d">  read docs/README.md and the spec first, record each answer.</div><div class="h">Q1. Who is affected by long sessions?</div><div class="d">  Recommended: hosted workspaces only. Computer-hosted…</div><div class="p">› hosted only</div><div class="h">Q2. …</div><div class="g">  ✓ Wrote docs/ideas/session-timeout.md (6 decisions)</div></div>`,
+ e:`<h4>The grilling you just did, built in</h4><p>The playbook tells any tool how to grill: one question at a time, with a recommendation, grounded in the project map. Answers are saved as a Markdown file.</p><ul><li>Can run as a team: teammates watch and comment through view-only sharing</li><li>Visual questions can open a preview, as in this session</li></ul>`},
+{n:'Stage 2',b:'Spec',art:'docs/specs/…md',gate:'Approved as a decision',uses:'playbook spec',
+ w:`<div class="bar"><b>Orchestrator</b><span class="m">· playbook spec</span></div><div class="term"><div class="c">$ console-connect playbook spec docs/ideas/session-timeout.md</div><div class="g">  ✓ Wrote docs/specs/session-timeout.md</div><div class="c">$ console-connect decision propose --file docs/specs/session-timeout.md</div><div class="y">  ● Proposed. Needs an Owner or Reviewer to approve (Q4 click).</div></div>`,
+ e:`<h4>A spec becomes official through the existing decision flow</h4><p>The spec is proposed as a decision. Once approved and committed, it's the contract, and it can be linked to tasks, just like "Use OAuth" today.</p><div class="rule"><b>Reuses</b>Decision proposal, approval, and commit verification.</div>`},
+{n:'Stage 3',b:'Tickets',art:'Tasks + docs/plans/…md',gate:'Assigning rule (Q11)',uses:'playbook tickets',
+ w:`<div class="bar"><b>Orchestrator</b><span class="m">· playbook tickets</span></div><div class="term"><div class="c">$ console-connect playbook tickets docs/specs/session-timeout.md</div><div class="d">  Split into 3 tracer-bullet tasks with blocking order</div><div class="c">$ console-connect task create "Shorten hosted token TTL" --assign sam --decision session-timeout</div><div class="c">$ console-connect task create "Refresh on activity" --after 1</div><div class="c">$ console-connect task create "Expiry banner" --assign casey --after 1</div><div class="g">  ✓ 3 tasks · plan written to docs/plans/2026-09-25-session-timeout.md</div></div>`,
+ e:`<h4>Tickets are ordinary tasks</h4><p>Each ticket is a Console Connect task linked to the spec, so the brief (Q6) carries the spec to the worker. Blocking order means a task waits until the one before it is accepted.</p><div class="rule"><b>New</b>"--after" (blocked-by) between tasks doesn't exist yet.</div>`},
+{n:'Stage 4',b:'Build',art:'Branch · worktree · package',gate:'Recipient approves (Q6)',uses:'Existing task flow',
+ w:`<div class="bar"><b>Shorten hosted token TTL</b><span class="m">· Sam · Claude Code</span></div><div class="term"><div class="p">&gt; Task: Shorten hosted token TTL (assigned by Blair)</div><div class="d">  Spec: docs/specs/session-timeout.md</div><div class="d">  Map says: update docs/implementation-status.md when verified</div><div class="d">  … working …</div><div class="c">$ console-connect package draft --summary "…" --check "npm test · 36 passed"</div></div>`,
+ e:`<h4>Exactly the round trip we designed</h4><p>Approve, launch, pre-filled brief, work, auto-drafted package. Nothing new here, just the orchestrator decisions Q1 to Q13.</p>`},
+{n:'Stage 5',b:'Review & ship',art:'docs/session-summaries/…md',gate:'Accept + GitHub merge',uses:'playbook review',
+ w:`<div class="bar"><b>Session timeout</b><span class="m">· all 3 tasks accepted</span></div><div class="term"><div class="c">$ console-connect playbook review session-timeout</div><div class="d">  Checks the whole change against docs/specs/session-timeout.md</div><div class="g">  ✓ All 3 packages accepted · PRs #44 #45 #46 merged</div><div class="c">$ console-connect summary write session-timeout</div><div class="g">  ✓ Wrote docs/session-summaries/session-timeout.md (shipped vs. planned)</div></div>`,
+ e:`<h4>Close the loop in writing</h4><p>A final review checks all the tasks against the spec, then a summary records what shipped versus what was planned. The idea card shows Done.</p>`},
+];
+function go(i){pipe.innerHTML=ST.map((s,j)=>`<div class="stage ${j===i?'on':''}" data-i="${j}"><div class="n">${s.n}</div><b>${s.b}</b><div class="art">${s.art}</div><div class="uses">${s.uses}</div><div class="gate">${s.gate}</div></div>`).join('');pipe.querySelectorAll('.stage').forEach(x=>x.onclick=()=>go(+x.dataset.i));win.innerHTML=ST[i].w;ex.innerHTML=ST[i].e}
+go(1);
+document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)));
+</script>
+</body></html>

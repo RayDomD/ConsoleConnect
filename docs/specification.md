@@ -21,13 +21,17 @@ The sender cannot approve their own work by default. Exact roles and invitation 
 
 ### Tasks and approvals
 
-Members can create tasks, claim unassigned tasks, and assign tasks to other members. Incoming assignments require explicit approval by the recipient before local AI execution starts.
+Members can create tasks and claim unassigned tasks. Who can assign tasks to other members is a workspace rule set by the Owner: anyone, Owners and Reviewers (Contributors claim or suggest an assignee), or the Owner only. The default is anyone. The host enforces the rule for the app and the command line alike. Incoming assignments require explicit approval by the recipient before local AI execution starts. Recipients may decline an assignment. (Amended 2026-09-25, see [the orchestrator ADR](adr/2026-09-25-orchestrator.md).)
 
 Assignments go to people. A sender can suggest an AI tool, but the recipient chooses the tool they use.
 
 Each coding task gets its own branch and worktree. Planning or discussion alone does not require a worktree.
 
 If a tool needs input, encounters an error, or exhausts its available usage, the session pauses and notifies its owner. Switching to another tool requires owner approval and uses a prepared handoff of progress and outstanding work.
+
+### Orchestration
+
+Added 2026-09-25. Any member can orchestrate: plan, hand out, and follow work, by hand or with their own AI tool. The tool acts as that person and is recorded as such ("via Codex"). AI tools are never workspace members. A `console-connect` command, available to any tool through the person's running app, is the tool-neutral interface. Accepting work, requesting changes, and approving decisions always require a person's click. Updates between orchestrator and workers are typed into the receiving console without being sent, unless that person turns on automatic handling. Details are in [the orchestrator ADR](adr/2026-09-25-orchestrator.md). A guided path from idea to shipped work is recorded as a direction in [the guided path ADR](adr/2026-09-25-guided-path.md).
 
 ### Local AI execution
 

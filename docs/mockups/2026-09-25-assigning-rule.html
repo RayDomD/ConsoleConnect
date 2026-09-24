@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q11: hierarchy and orchestration</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--danger:#A02F37;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 16px;color:var(--muted);max-width:108ch}
+.insight{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-bottom:20px}
+.box{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:14px 16px;font-size:13px}
+.box h3{margin:0 0 6px;font:600 14px 'Instrument Sans'}.box p{margin:0;color:var(--muted)}
+.flow{display:flex;align-items:center;gap:8px;margin-top:10px;flex-wrap:wrap;font-size:12px}
+.flow span{padding:4px 10px;border-radius:8px;background:var(--canvas)}.flow i{color:var(--muted);font-style:normal}
+.flow .gate{background:var(--warn-bg);color:var(--warning);font-weight:600}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.desc{font-size:12.5px;color:var(--muted);margin:0 0 10px;min-height:56px}
+.page{border-radius:12px;background:var(--surface);box-shadow:var(--lift-2);padding:14px 16px;min-height:300px;font-size:13px}
+.page h4{margin:0 0 2px;font:400 19px Newsreader,serif}.page .sub{color:var(--muted);font-size:12px;margin-bottom:10px}
+.radio{display:flex;gap:9px;align-items:flex-start;padding:8px 10px;border-radius:9px;margin-top:6px;cursor:pointer}
+.radio.on{background:var(--canvas)}
+.radio i{flex:none;width:15px;height:15px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--muted);margin-top:2px}
+.radio.on i{box-shadow:inset 0 0 0 4.5px var(--accent)}
+.radio b{display:block;font-weight:600;font-size:13px}.radio span{color:var(--muted);font-size:12px}
+.mem{display:grid;grid-template-columns:auto 1fr auto;gap:8px 10px;align-items:center;padding:7px 0;box-shadow:inset 0 -1px 0 var(--border)}
+.av{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:50%;background:var(--selection);color:var(--accent);font-size:11px;font-weight:700}
+.chk{font-size:12px;color:var(--muted)}
+.term{background:var(--well);border-radius:8px;padding:8px 10px;font:11.5px/1.6 'JetBrains Mono',monospace;margin-top:10px}
+.term .c{color:#355CA8}.term .r{color:#A02F37}.term .g{color:#346F4B}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;font-size:12px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.spec{margin-top:18px;font-size:13px;border-radius:10px;background:var(--warn-bg);color:var(--warning);padding:10px 14px}
+.spec b{color:var(--text)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q11 · Roles, revisited</div>
+<h1>Hierarchy is about who can assign work to whom. The orchestrator is just a faster pen.</h1>
+<p class="lede">You're right to protect the hierarchy. The key fact is that today <b>any member can already create tasks and assign them to anyone</b> by hand in the app (I checked the code: only approving decisions and accepting packages are role-restricted). Locking only the orchestrator would block the tool but not the action. If hierarchy matters, the control has to sit on <b>assigning</b>, and then it applies to the app and the orchestrator equally.</p>
+
+<div class="insight">
+ <div class="box"><h3>What protects the team today</h3><p>Assigned work is only a request until the recipient approves it, and a person with the right role has to accept what comes back.</p>
+  <div class="flow"><span>Anyone assigns</span><i>→</i><span class="gate">Recipient approves</span><i>→</i><span>Work</span><i>→</i><span class="gate">Owner or Reviewer accepts</span></div></div>
+ <div class="box"><h3>What's missing for a hierarchy</h3><p>Nothing stops a Contributor from sending work to the Owner, or to another Contributor, even though the recipient can decline. That's the gap to close, and it isn't specific to AI.</p>
+  <div class="flow"><span>Casey (Contributor)</span><i>→ assigns →</i><span>Blair (Owner)</span><i>?</i></div></div>
+</div>
+
+<div class="opts">
+ <div class="opt" data-o="A"><div class="oh"><span class="l">A</span><b>Open, as before</b></div>
+  <p class="desc">Anyone assigns to anyone, by hand or through the orchestrator. Recipient approval and role-based acceptance are the only gates.</p>
+  <div class="page"><h4>Team</h4><div class="sub">No assignment rules</div>
+   <div class="term"><div class="c">casey$ console-connect task create "Refactor auth" --assign blair</div><div class="g">  ✓ Assigned to Blair · waiting for Blair's approval</div></div>
+   <p class="chk" style="margin-top:10px">Blair can decline, but the request still lands on her desk.</p></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Flat, collaborative teams: the spec's default</li></ul></div><div class="con"><b>Trade-off</b><ul><li>No way to express "leads hand out work"</li></ul></div></div>
+ </div>
+
+ <div class="opt sel" data-o="B"><div class="oh"><span class="l">B</span><b>A team setting for who can assign</b><span class="rec">Recommended</span></div>
+  <p class="desc">The Owner picks one rule for the workspace. It governs assigning everywhere: the app, the CLI, and every orchestrator. Anyone can still use an orchestrator within that rule.</p>
+  <div class="page"><h4>Team › Assigning work</h4><div class="sub">Applies to the app and every orchestrator. Only the Owner can change it.</div>
+   <div class="radio" data-r="1"><i></i><div><b>Anyone can assign to anyone</b><span>Flat team. Recipients still approve.</span></div></div>
+   <div class="radio on" data-r="2"><i></i><div><b>Owners and Reviewers assign, Contributors claim</b><span>Leads hand out work. Contributors create tasks and claim unassigned ones, or suggest an assignee for a lead to confirm.</span></div></div>
+   <div class="radio" data-r="3"><i></i><div><b>Only the Owner assigns</b><span>One lead. Everyone else claims or suggests.</span></div></div>
+   <div class="term"><div class="c">casey$ console-connect task create "Refactor auth" --assign blair</div><div class="r">  ✗ Contributors can't assign in this workspace. Created unassigned,</div><div class="r">    with Blair suggested. A lead can confirm it.</div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Real hierarchy, enforced on the host for every path</li><li>One setting, uses the existing roles</li><li>Contributors can still orchestrate their own planning and claims</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Changes the spec's "members can assign to other members" into a team choice</li></ul></div></div>
+ </div>
+
+ <div class="opt" data-o="C"><div class="oh"><span class="l">C</span><b>A per-person orchestrator permission</b></div>
+  <p class="desc">The Owner ticks who may use an orchestrator. Assigning by hand stays open to everyone.</p>
+  <div class="page"><h4>Team › Members</h4><div class="sub">Can use an orchestrator</div>
+   <div class="mem"><span class="av">B</span><span>Blair · Owner</span><span class="chk">☑</span></div>
+   <div class="mem"><span class="av">R</span><span>Riley · Reviewer</span><span class="chk">☑</span></div>
+   <div class="mem"><span class="av">C</span><span>Casey · Contributor</span><span class="chk">☐</span></div>
+   <p class="chk" style="margin-top:10px">Casey can't open the orchestrator, but can still assign "Refactor auth" to Blair by hand in the app.</p></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Controls who spends AI on coordination</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Doesn't create a hierarchy: the same assignment is one click away by hand</li><li>A new permission to store and sync on both hosts</li></ul></div></div>
+ </div>
+</div>
+<div class="spec"><b>Spec note:</b> the spec says "Members can create tasks, claim unassigned tasks, and assign tasks to other members", and lists exact roles as still unsettled. B keeps that as the default ("Anyone can assign") and adds the other two as team choices. I'd record it as a spec amendment.</div>
+</div>
+<script>
+document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)));
+document.querySelectorAll('.radio').forEach(r=>r.onclick=e=>{e.stopPropagation();r.parentElement.querySelectorAll('.radio').forEach(x=>x.classList.toggle('on',x===r))});
+</script>
+</body></html>

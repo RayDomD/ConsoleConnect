@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q13: project map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--blue:#355CA8;--blue-bg:#E4EAF1;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 16px;color:var(--muted);max-width:110ch}
+.code{font:12px 'JetBrains Mono',monospace}
+.layers{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:22px}
+.layer{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:12px 14px;font-size:13px}
+.layer h3{margin:0 0 2px;font:600 14px 'Instrument Sans';display:flex;align-items:center;gap:8px}
+.layer .src{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px}
+.live{background:var(--selection);color:var(--accent)}.repo{background:var(--blue-bg);color:var(--blue)}.task{background:var(--warn-bg);color:var(--warning)}
+.layer p{margin:4px 0 6px;color:var(--muted)}.layer ul{margin:0;padding-left:16px;color:var(--muted);font-size:12.5px}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.desc{font-size:12.5px;color:var(--muted);margin:0 0 10px;min-height:56px}
+.doc{border-radius:12px;background:var(--surface);box-shadow:var(--lift-2);overflow:hidden;height:440px;display:flex;flex-direction:column}
+.doc .top{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:12px;color:var(--muted);box-shadow:inset 0 -1px 0 var(--border)}
+.doc .top b{color:var(--text)}
+.md{padding:12px 14px;font-size:12.5px;overflow:auto;flex:1}
+.md h4{font:400 18px Newsreader,serif;margin:0 0 6px}.md h5{font:600 12.5px 'Instrument Sans';margin:10px 0 3px}
+.md .ln{display:grid;grid-template-columns:auto 1fr;gap:8px;padding:2px 0}.md .ln span{color:var(--muted)}
+.md .p{font:11.5px 'JetBrains Mono',monospace;color:var(--blue)}
+.term{background:var(--well);padding:10px 12px;font:11.5px/1.6 'JetBrains Mono',monospace;overflow:auto;flex:1}
+.term .c{color:#355CA8}.term .d{color:#62676C}.term .h{color:var(--text);font-weight:500;margin-top:5px}.term .g{color:#346F4B}.term .y{color:#805517}
+.set{padding:12px 14px;font-size:12.5px;flex:1;overflow:auto}
+.set .row{display:grid;grid-template-columns:1fr auto;gap:4px 10px;padding:8px 10px;border-radius:9px;background:var(--canvas);margin-bottom:6px;align-items:center}
+.set small{grid-column:1/-1;color:var(--muted)}
+.tag{font-size:11px;padding:1px 7px;border-radius:99px;box-shadow:inset 0 0 0 1px var(--border);color:var(--muted)}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;font-size:12px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.toggle{display:inline-flex;border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);overflow:hidden;margin-left:auto}
+.toggle button{border:0;background:transparent;padding:3px 9px;font:500 11.5px 'Instrument Sans';color:var(--muted);cursor:pointer}.toggle button.on{background:var(--selection);color:var(--text)}
+.foot{margin-top:18px;display:grid;grid-template-columns:repeat(3,1fr);gap:18px;font-size:13px}
+.foot div{border-top:1px solid var(--border);padding-top:10px}.foot b{display:block;margin-bottom:3px}.foot p{margin:0;color:var(--muted)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q13 · Project knowledge</div>
+<h1>Where does the brief learn about the project: docs, decisions, and brand?</h1>
+<p class="lede">Q12 settled that <span class="code">console-connect brief</span> tells every tool what it needs. It draws on three layers. The team and task state come live from the host. Project knowledge belongs in the repository, since the spec says "Git owns code and document history." The question is how the brief knows which files matter and when to read them. Every worker's worktree already contains these files, so the tools can open them directly.</p>
+
+<div class="layers">
+ <div class="layer"><h3>Team and work <span class="src live">Live from host</span></h3><p>Changes minute to minute, so it's never written to a file.</p><ul><li>Members, roles, assigning rule (Q11)</li><li>Open tasks and states, auto settings (Q9)</li><li>What needs a person's click (Q4)</li></ul></div>
+ <div class="layer"><h3>Project and brand <span class="src repo">From the repo</span></h3><p>Changes through commits, reviewed like code.</p><ul><li>Spec, <span class="code">PRODUCT.md</span>, <span class="code">DESIGN.md</span> (brand)</li><li><span class="code">docs/adr</span>, <span class="code">docs/plans</span>, <span class="code">docs/decisions</span>, <span class="code">docs/mockups</span></li><li>Where things live and when to read them</li></ul></div>
+ <div class="layer"><h3>This task <span class="src task">From the task</span></h3><p>Only for workers, added to their brief.</p><ul><li>The brief (Q6) and linked decisions</li><li>The files the map says to read for this kind of task</li></ul></div>
+</div>
+
+<div class="opts">
+ <div class="opt" data-o="A"><div class="oh"><span class="l">A</span><b>Auto-detect known files</b></div>
+  <p class="desc">The brief scans for known names (<span class="code">PRODUCT.md</span>, <span class="code">DESIGN.md</span>, <span class="code">docs/adr</span>…) and lists what it finds. Nothing to write.</p>
+  <div class="doc"><div class="top"><b>console-connect brief</b></div><div class="term">
+   <div class="h">Project files found</div><div class="d">  PRODUCT.md · DESIGN.md · docs/specification.md</div><div class="d">  docs/adr/ (3) · docs/plans/ (2) · docs/mockups/ (9)</div><div class="d">  docs/decisions/ (1)</div>
+   <div class="h" style="color:var(--warning)">Not known</div><div class="d">  which to read first, which are out of date,</div><div class="d">  that UI work must follow DESIGN.md and the mockups,</div><div class="d">  that docs/implementation-status.md is the evidence log</div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Zero setup</li></ul></div><div class="con"><b>Trade-off</b><ul><li>A file list, not guidance</li><li>Misses anything with an unusual name</li></ul></div></div>
+ </div>
+
+ <div class="opt sel" data-o="B"><div class="oh"><span class="l">B</span><b>A project map committed in the repo</b><span class="rec">Recommended</span></div>
+  <p class="desc">One Markdown file, <span class="code">docs/README.md</span>, says what each doc is and when to read it. The app drafts it from auto-detection, and the team edits it like any doc. The brief reads it live.</p>
+  <div class="doc"><div class="top"><b>docs/README.md</b><span>· project map</span><div class="toggle"><button class="on" data-v="md">The file</button><button data-v="brief">In the brief</button></div></div>
+   <div class="md" id="mapMd">
+    <h4>Console Connect: project map</h4>
+    <h5>Start here</h5>
+    <div class="ln"><span class="p">docs/specification.md</span><span>What the product is and isn't. Read before any feature work.</span></div>
+    <div class="ln"><span class="p">PRODUCT.md</span><span>Users, purpose, brand commitments.</span></div>
+    <h5>Brand and UI</h5>
+    <div class="ln"><span class="p">DESIGN.md</span><span>Tokens, type, and the Paper &amp; ink look. Required for any UI change.</span></div>
+    <div class="ln"><span class="p">docs/mockups/</span><span>Saved design decisions. A mockup for a surface is the decision.</span></div>
+    <h5>Decisions and plans</h5>
+    <div class="ln"><span class="p">docs/decisions/</span><span>Official team decisions (written by Console Connect).</span></div>
+    <div class="ln"><span class="p">docs/adr/</span><span>Architecture and design records.</span></div>
+    <div class="ln"><span class="p">docs/plans/</span><span>Approved plans and their status.</span></div>
+    <h5>Evidence</h5>
+    <div class="ln"><span class="p">docs/implementation-status.md</span><span>What's verified. Update when you verify something.</span></div>
+   </div>
+   <div class="term" id="mapBrief" hidden>
+    <div class="h">Team</div><div class="d">  Blair (Owner) · Riley (Reviewer) · Sam, Casey (Contributors)</div><div class="d">  Assigning: Owners and Reviewers assign, Contributors claim</div>
+    <div class="h">Your task: Expired invite retry</div><div class="d">  Linked decision: docs/decisions/use-oauth.md</div>
+    <div class="h">Project map (docs/README.md @ main)</div><div class="d">  Start here: docs/specification.md, PRODUCT.md</div><div class="y">  UI work: follow DESIGN.md and docs/mockups/</div><div class="d">  Decisions: docs/decisions/ · ADRs: docs/adr/ · Plans: docs/plans/</div><div class="d">  Evidence: update docs/implementation-status.md</div>
+    <div class="h">Commands</div><div class="d">  ask · package draft · events · brief --task</div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Guidance, not just a list: "read this before UI work"</li><li>Versioned in Git and reviewed like code, per the spec</li><li>The same map for people, onboarding, and every AI tool</li><li>Readable on GitHub</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Someone keeps it current (the app flags new docs the map doesn't mention)</li></ul></div></div>
+ </div>
+
+ <div class="opt" data-o="C"><div class="oh"><span class="l">C</span><b>Map stored in the app</b></div>
+  <p class="desc">The Owner fills in a Project page in Console Connect's settings, and it's stored by the coordination service.</p>
+  <div class="doc"><div class="top"><b>Settings › Project</b></div><div class="set">
+   <div class="row"><b>Specification</b><span class="tag">docs/specification.md</span><small>Read before feature work</small></div>
+   <div class="row"><b>Brand</b><span class="tag">DESIGN.md</span><small>Required for UI changes</small></div>
+   <div class="row"><b>Decisions</b><span class="tag">docs/decisions/</span><small>Official decisions</small></div>
+   <p style="color:var(--muted);margin:10px 2px 0">Lives in the host or Supabase, outside Git. Not visible on GitHub, not versioned with the code, and separate from what's on each branch.</p></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>A form instead of Markdown</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Splits project knowledge away from Git, against the spec</li><li>Can disagree with what a branch actually contains</li></ul></div></div>
+ </div>
+</div>
+
+<div class="foot">
+ <div><b>Brand identity rides along</b><p>DESIGN.md and PRODUCT.md are in the map with "when to read" rules, so a worker on a UI task is told to follow them. Nothing about the brand is copied into Console Connect.</p></div>
+ <div><b>Branch-correct</b><p>Workers read the map from their worktree, so they see the docs as of their branch. The orchestrator reads it from main.</p></div>
+ <div><b>Starts itself</b><p>With no map, the brief falls back to A and offers "Draft a project map", which writes a starter <span class="code">docs/README.md</span> for the team to review and commit.</p></div>
+</div>
+</div>
+<script>
+document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)));
+document.querySelectorAll('.toggle button').forEach(b=>b.onclick=e=>{e.stopPropagation();b.parentElement.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));mapMd.hidden=b.dataset.v!=='md';mapBrief.hidden=b.dataset.v!=='brief'});
+</script>
+</body></html>

@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q12: how the orchestrator learns the workspace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--danger:#A02F37;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 16px;color:var(--muted);max-width:108ch}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.desc{font-size:12.5px;color:var(--muted);margin:0 0 10px;min-height:56px}
+.win{border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2);height:430px;display:flex;flex-direction:column}
+.bar{height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;box-shadow:inset 0 -1px 0 var(--border);font-size:12px}
+.tsel{display:inline-flex;border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);overflow:hidden;margin-left:auto}
+.tsel button{border:0;background:transparent;padding:3px 9px;font:500 11.5px 'Instrument Sans';color:var(--muted);cursor:pointer}.tsel button.on{background:var(--selection);color:var(--text)}
+.term{flex:1;background:var(--well);padding:10px 12px;font:11.5px/1.6 'JetBrains Mono',monospace;overflow:hidden;display:flex;flex-direction:column;gap:2px}
+.term .d{color:#62676C}.term .c{color:#355CA8}.term .g{color:#346F4B}.term .p{color:#2D624B}.term .r{color:#A02F37}.term .y{color:#805517}
+.grow{flex:1}
+.input{border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);background:var(--surface);padding:7px 9px;font-size:11.5px}
+.input .hint{font:600 10.5px 'Instrument Sans';color:var(--warning);margin-bottom:2px}
+.files{background:var(--surface);border-radius:8px;box-shadow:var(--ring);padding:6px 8px;font:11.5px 'JetBrains Mono',monospace;margin-bottom:6px}
+.files .add{color:#346F4B}.files .mod{color:#805517}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;font-size:12px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.what{margin-top:20px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-size:13px}
+.what div{border-top:1px solid var(--border);padding-top:10px}.what b{display:block;margin-bottom:3px}.what p{margin:0;color:var(--muted)}
+.code{font:12px 'JetBrains Mono',monospace}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q12 · Orchestrator context</div>
+<h1>When the orchestrator console opens, how does the tool learn the team, the tasks, and the rules?</h1>
+<p class="lede">Codex, Antigravity, and Claude Code each look for different instruction files (<span class="code">AGENTS.md</span>, <span class="code">GEMINI.md</span>, <span class="code">CLAUDE.md</span>), so this choice decides whether the setup stays tool-neutral. Switch the tool in each window to see how it behaves.</p>
+
+<div class="opts">
+ <div class="opt sel" data-o="A"><div class="oh"><span class="l">A</span><b>The CLI explains itself, plus a typed-in opener</b><span class="rec">Recommended</span></div>
+  <p class="desc">The app types a short opener (not sent) telling the tool to run <span class="code">console-connect brief</span>. That command prints the team, roles, assigning rule, open tasks, and the command guide, live from the workspace.</p>
+  <div class="win"><div class="bar"><b>Orchestrator</b><div class="tsel" data-w="A"><button class="on">Codex</button><button>Antigravity</button><button>Claude Code</button></div></div>
+   <div class="term"><div class="grow"><div class="d" data-tool>Codex started in C:\work\demo (main)</div></div>
+    <div class="input"><div class="hint">Opener from Console Connect · not sent · same for every tool</div><span class="p">›</span> You are Blair's orchestrator for Smoke team. Run <span class="c">console-connect brief</span> to see the team, the rules, and open tasks, then wait for instructions.</div>
+    <div style="margin-top:8px" class="d">After Enter:</div><div class="c">$ console-connect brief</div>
+    <div class="d">  Team: Blair (Owner), Riley (Reviewer), Sam, Casey (Contributors)</div><div class="d">  Assigning: Owners and Reviewers assign, Contributors claim</div><div class="d">  Open: 4 tasks · 1 waiting for your review · Auto: off</div><div class="d">  You can: task create/assign/list, package show, review propose, ask, events</div><div class="d">  Needs Blair's click: accept, request changes, approve</div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Identical for every tool, including ones added later</li><li>Always current, because it's read live, not from a stale file</li><li>Writes nothing into the repository</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Blair presses Enter on the opener once per session</li></ul></div></div>
+ </div>
+
+ <div class="opt" data-o="B"><div class="oh"><span class="l">B</span><b>Write each tool's instruction file</b></div>
+  <p class="desc">The app writes the orchestrator instructions into the file each tool reads automatically.</p>
+  <div class="win"><div class="bar"><b>Orchestrator</b><div class="tsel" data-w="B"><button class="on">Codex</button><button>Antigravity</button><button>Claude Code</button></div></div>
+   <div class="term"><div class="files" id="fB"><span class="mod">M AGENTS.md</span> · orchestrator section added</div>
+    <div class="grow"><div class="d" data-tool>Codex started in C:\work\demo (main)</div><div class="g">  Loaded AGENTS.md (Console Connect orchestrator rules)</div></div>
+    <div class="input"><span class="p">›</span> </div>
+    <div class="r" style="margin-top:8px">git status: AGENTS.md modified in your main folder</div><div class="d">  Teammates' tools read the same file, including workers</div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>No Enter needed, and the tool knows its role immediately</li></ul></div><div class="con"><b>Trade-off</b><ul><li>A different file per tool, so new tools need new code</li><li>Modifies the shared repository, and workers' AIs read it too</li><li>Goes stale as the team changes</li></ul></div></div>
+ </div>
+
+ <div class="opt" data-o="C"><div class="oh"><span class="l">C</span><b>Nothing, Blair explains</b></div>
+  <p class="desc">The tool starts plain. Blair tells it about <span class="code">console-connect</span> when needed.</p>
+  <div class="win"><div class="bar"><b>Orchestrator</b><div class="tsel" data-w="C"><button class="on">Codex</button><button>Antigravity</button><button>Claude Code</button></div></div>
+   <div class="term"><div class="grow"><div class="d" data-tool>Codex started in C:\work\demo (main)</div><div style="margin-top:6px"><span class="p">›</span> Split the invite work between Sam and Casey.</div><div class="d">  I don't see a task tracker. Should I create GitHub issues or a TODO file?</div></div>
+    <div class="input"><span class="p">›</span> </div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Nothing to build</li></ul></div><div class="con"><b>Trade-off</b><ul><li>The tool doesn't know the team or rules and may improvise</li><li>Not seamless</li></ul></div></div>
+ </div>
+</div>
+
+<div class="what">
+ <div><b>Workers get the same approach</b><p>The task brief from Q6 ends with "run <span class="code">console-connect brief --task</span> for the linked decisions and rules." Nothing is written to the repository.</p></div>
+ <div><b>What the brief contains</b><p>Team and roles, the assigning rule (Q11), open tasks and states, your auto settings (Q9), and which actions need your click (Q4).</p></div>
+ <div><b>Respects permissions</b><p>A Contributor's brief says they claim or suggest instead of assign, so the tool doesn't try what the host will reject.</p></div>
+ <div><b>Works outside the app too</b><p>In any terminal, running <span class="code">console-connect brief</span> gives an outside tool the same picture.</p></div>
+</div>
+</div>
+<script>
+const START={Codex:'Codex started in C:\\work\\demo (main)',Antigravity:'Antigravity started in C:\\work\\demo (main)','Claude Code':'Claude Code started in C:\\work\\demo (main)'};
+const FILE={Codex:'AGENTS.md',Antigravity:'GEMINI.md','Claude Code':'CLAUDE.md'};
+document.querySelectorAll('.tsel').forEach(t=>t.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();t.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b));
+ const win=t.closest('.win');const n=b.textContent;win.querySelector('[data-tool]').textContent=START[n];
+ if(t.dataset.w==='B'){win.querySelector('#fB').innerHTML=`<span class="mod">M ${FILE[n]}</span> · orchestrator section added`;win.querySelector('.g').textContent=`  Loaded ${FILE[n]} (Console Connect orchestrator rules)`;win.querySelector('.r').textContent=`git status: ${FILE[n]} modified in your main folder`}}));
+document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)));
+</script>
+</body></html>

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Orchestrator: decisions so far</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--blue:#355CA8;--blue-bg:#E4EAF1;
+--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;padding:24px 30px 60px}
+.wrap{max-width:1320px;margin:auto}
+h1{font:400 30px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 20px;color:var(--muted);max-width:100ch}
+.code{font:12px 'JetBrains Mono',monospace}
+.goal{border-radius:12px;background:var(--surface);box-shadow:var(--lift-2);padding:16px 20px;margin-bottom:22px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+.goal b{font:400 22px/1.2 Newsreader,serif}.goal p{margin:4px 0 0;color:var(--muted)}
+.loop{display:flex;align-items:center;gap:6px;font-size:12px;flex-wrap:wrap;justify-content:flex-end}
+.loop span{padding:4px 10px;border-radius:8px;background:var(--canvas)}.loop i{color:var(--muted);font-style:normal}
+.grp{margin-bottom:22px}.grp h2{font:600 13px 'Instrument Sans';color:var(--muted);margin:0 0 8px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.d{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:12px 14px;font-size:13px;transition:box-shadow 150ms var(--ease)}
+.d:hover{box-shadow:var(--lift-2)}
+.d .n{font:600 11px 'Instrument Sans';color:var(--accent)}.d b{display:block;font-size:14px;margin:2px 0 4px}.d p{margin:0;color:var(--muted)}
+.d .tag{display:inline-block;margin-top:6px;font-size:11px;padding:1px 8px;border-radius:99px}
+.spec{background:var(--warn-bg);color:var(--warning)}.newc{background:var(--blue-bg);color:var(--blue)}
+.next{border-radius:12px;background:var(--surface);box-shadow:var(--lift-2);padding:16px 20px;display:grid;grid-template-columns:1fr 1fr;gap:26px;font-size:13px}
+.next h3{margin:0 0 8px;font:600 14px 'Instrument Sans'}.next ol,.next ul{margin:0;padding-left:18px;color:var(--muted)}.next li{margin:4px 0}.next li b{color:var(--text);font-weight:600}
+</style></head><body>
+<div class="wrap">
+<h1>Orchestrator and workers: 15 decisions</h1>
+<p class="lede">Everything we settled in this grilling, grouped. Tags mark what changes the approved spec and what needs new code. If anything here looks wrong, say which number.</p>
+<div class="goal"><div><b>A seamless loop between the person orchestrating and the people doing the work, with any AI tool.</b><p>People stay the actors. AI tools are their hands, and approvals stay with people.</p></div>
+ <div class="loop"><span>Idea</span><i>→</i><span>Talk it through</span><i>→</i><span>Assign</span><i>→</i><span>Approve</span><i>→</i><span>Build</span><i>→</i><span>Package</span><i>→</i><span>Review</span><i>→</i><span>Merge</span></div></div>
+
+<div class="grp"><h2>Who and how</h2><div class="grid">
+ <div class="d"><div class="n">Q1</div><b>The tool acts as you</b><p>Work is recorded under the person, marked "via Codex" or similar. No AI is a workspace member.</p></div>
+ <div class="d"><div class="n">Q2</div><b>A CLI is the contract</b><p><span class="code">console-connect</span> works in every tool. MCP can wrap it later.</p><span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Q3</div><b>Through the open app</b><p>The CLI talks to your running app over a local pipe. No second login, and no secrets on disk.</p><span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Q4</div><b>Clicks stay with people</b><p>The AI can create, assign, post, and read. Accepting, requesting changes, and approving need a click in the app.</p></div>
+ <div class="d"><div class="n">Q11</div><b>Anyone orchestrates. The team sets who assigns.</b><p>The Owner picks: anyone assigns, leads assign and Contributors claim, or Owner only. The host enforces it for the app and the CLI.</p><span class="tag spec">spec amendment</span> <span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Q5</div><b>Built-in orchestrator console</b><p>At the workspace level, in the main folder with no worktree. Outside terminals work too.</p><span class="tag newc">new</span></div>
+</div></div>
+
+<div class="grp"><h2>The round trip</h2><div class="grid">
+ <div class="d"><div class="n">Q6</div><b>The brief is typed in, not sent</b><p>When a worker launches, the task brief fills their tool's input. They read it and press Enter.</p><span class="tag newc">new · per-tool ready signal</span></div>
+ <div class="d"><div class="n">Q7</div><b>The package fills itself</b><p>The worker's AI runs <span class="code">package draft</span>, and the app adds the files, commit, and PR. One card, Submit.</p><span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Q8</div><b>Updates reach the orchestrator</b><p>Submissions, questions, and stalls are typed into the orchestrator console. Auto-send is opt-in.</p><span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Q9</div><b>The auto setting</b><p>A master switch, Ask me or Auto per event, follow-up assignments always ask, a daily limit, and a visible log.</p><span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Q10</div><b>The worker side mirrors it</b><p>Answers can go to the worker's AI automatically. Change requests and decision changes always wait for the worker.</p><span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Also</div><b>Decline and "Assigned by me"</b><p>Recipients can decline a task, and senders see everything they handed out, grouped by state.</p><span class="tag newc">new</span></div>
+</div></div>
+
+<div class="grp"><h2>Knowledge and process</h2><div class="grid">
+ <div class="d"><div class="n">Q12</div><b>One brief for every tool</b><p>A typed-in opener plus <span class="code">console-connect brief</span>, read live. No per-tool instruction files.</p><span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Q13</div><b>A project map in the repo</b><p><span class="code">docs/README.md</span> says what each doc is and when to read it. Protected docs are flagged in review, and drift is flagged.</p><span class="tag newc">new</span></div>
+ <div class="d"><div class="n">Q14 · Q15</div><b>A guided path from idea to ship</b><p>Pick a size (Quick fix, Feature, or Big idea), and a Next step button follows the matching stages. Docs scaffold via PR. Needs its own grilling.</p><span class="tag newc">new feature</span></div>
+</div></div>
+
+<div class="next">
+ <div><h3>If this is right, I'll write it down (no code)</h3><ol>
+  <li><b>ADR</b> <span class="code">docs/adr/2026-09-25-orchestrator.md</span>: Q1–Q13</li>
+  <li><b>ADR</b> <span class="code">docs/adr/2026-09-25-guided-path.md</span>: Q14–Q15, direction only</li>
+  <li><b>Spec amendment</b>: the "who can assign" team rule, and a short identity paragraph on the orchestrator</li>
+  <li><b>Mockups</b>: save the walkthroughs to <span class="code">docs/mockups/</span> and link them</li></ol></div>
+ <div><h3>Then, per your flow</h3><ul>
+  <li>This spans many sessions, so next is <b>/to-spec</b> for the orchestrator, then <b>/to-tickets</b></li>
+  <li>The guided path gets its own short grilling afterward</li>
+  <li>P1–P9 and the console workspace are already approved and can be built first, in parallel</li></ul></div>
+</div>
+</div>
+</body></html>

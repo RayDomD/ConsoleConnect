@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q8: how the orchestrator hears about work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1480px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 14px;color:var(--muted);max-width:100ch}
+.ctl{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.btn{border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:8px 14px;font:600 13px 'Instrument Sans';box-shadow:inset 0 1px 0 rgb(255 255 255/.16),0 1px 2px rgb(20 40 30/.25);cursor:pointer;transition:transform 120ms var(--ease)}
+.btn2{border:0;border-radius:8px;background:var(--surface);color:var(--text);padding:8px 14px;font:500 13px 'Instrument Sans';box-shadow:inset 0 0 0 1px var(--border);cursor:pointer;transition:transform 120ms var(--ease)}
+button:active{transform:scale(.97)}
+.meta{font-size:12px;color:var(--muted)}
+.opts{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.win{border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2);height:420px;display:flex;flex-direction:column;position:relative}
+.bar{height:40px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;box-shadow:inset 0 -1px 0 var(--border);font-size:12px}
+.tool{display:inline-flex;align-items:center;gap:6px;font-weight:600}.tool i{width:12px;height:12px;border-radius:3px;background:#1F1F1F}
+.bar .sp{flex:1}
+.badge{display:none;align-items:center;gap:5px;font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--warning);color:#FFF8EC}
+.badge.on{display:inline-flex;animation:pop 260ms var(--ease)}@keyframes pop{40%{transform:scale(1.15)}}
+.term{flex:1;background:var(--well);padding:10px 12px;font:12px/1.65 'JetBrains Mono',monospace;overflow:hidden;display:flex;flex-direction:column}
+.term .d{color:#62676C}.term .c{color:#355CA8}.term .g{color:#346F4B}.term .p{color:#2D624B}.term .y{color:#805517}
+.term .grow{flex:1}
+.new{animation:rise 260ms var(--ease) both}@keyframes rise{from{opacity:0;transform:translateY(6px)}}
+.input{border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);background:var(--surface);padding:7px 9px;min-height:34px}
+.input .hint{font:600 10.5px 'Instrument Sans';color:var(--warning);margin-bottom:2px}
+.cursor{display:inline-block;width:7px;height:13px;background:var(--accent);vertical-align:-2px;animation:blink 1.1s steps(1) infinite}@keyframes blink{50%{opacity:0}}
+.note{position:absolute;left:10px;right:10px;bottom:10px;background:var(--surface);border-radius:10px;box-shadow:var(--lift-2);padding:9px 11px;font-size:12px;display:none}
+.note.on{display:block;animation:rise 240ms var(--ease)}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;font-size:12px}
+.pc b{display:block;font-size:12px;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}
+.pc .pro b{color:var(--accent)}.pc .con b{color:var(--warning)}
+.foot{margin-top:18px;display:grid;grid-template-columns:1fr 1fr;gap:24px;font-size:13px}
+.foot div{border-top:1px solid var(--border);padding-top:10px}.foot b{display:block;margin-bottom:4px}.foot p{margin:0;color:var(--muted)}
+.code{font:12px 'JetBrains Mono',monospace}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q8 · Orchestrator ↔ workers</div>
+<h1>When a worker submits, asks, or gets stuck, how does your orchestrator find out?</h1>
+<p class="lede">Each window is Blair's orchestrator console running Codex. Press the buttons to send events from the team and watch how each option handles them. Click an option to mark your pick, then answer in the terminal.</p>
+<div class="ctl"><button class="btn" id="e1">Sam submits his package</button><button class="btn2" id="e2">Casey's AI asks a question</button><button class="btn2" id="e3">Sam's session gets stuck</button><button class="btn2" id="rs">Reset</button><span class="meta">Blair is away from the keyboard in every window.</span></div>
+
+<div class="opts">
+ <div class="opt sel" data-o="A">
+  <div class="oh"><span class="l">A</span><b>Typed in, not sent</b><span class="rec">Recommended</span></div>
+  <div class="win"><div class="bar"><span class="tool"><i></i>Codex</span><span class="meta">Orchestrator</span><span class="sp"></span><span class="badge" id="bA">0 updates</span></div>
+   <div class="term"><div class="d">console-connect is ready</div><div class="d">Last: assigned 2 tasks (Sam, Casey)</div><div class="grow" id="tA"></div>
+    <div class="input" id="iA"><span class="p">›</span> <span class="cursor"></span></div></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Blair sees everything in one place, ready to go</li><li>One Enter and the orchestrator handles it</li><li>Uses no AI until Blair says so</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Nothing happens while Blair is away</li></ul></div></div>
+ </div>
+
+ <div class="opt" data-o="B">
+  <div class="oh"><span class="l">B</span><b>Auto-send</b></div>
+  <div class="win"><div class="bar"><span class="tool"><i></i>Codex</span><span class="meta">Orchestrator · auto</span><span class="sp"></span></div>
+   <div class="term"><div class="d">console-connect is ready</div><div class="d">Last: assigned 2 tasks (Sam, Casey)</div><div class="grow" id="tB"></div>
+    <div class="input"><span class="p">›</span> <span class="cursor"></span></div></div>
+   <div class="note" id="nB"><b>Needs your confirmation</b> · Codex proposed accepting Sam's package. <span class="meta">(Q4 still requires Blair's click.)</span></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Most seamless: answers and follow-ups happen while Blair is away</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Spends Blair's AI usage on every event</li><li>Can reply for Blair and assign follow-up work unseen</li><li>Accepting still waits for Blair</li></ul></div></div>
+ </div>
+
+ <div class="opt" data-o="C">
+  <div class="oh"><span class="l">C</span><b>Pull only</b></div>
+  <div class="win"><div class="bar"><span class="tool"><i></i>Codex</span><span class="meta">Orchestrator</span><span class="sp"></span></div>
+   <div class="term"><div class="d">console-connect is ready</div><div class="d">Last: assigned 2 tasks (Sam, Casey)</div><div class="grow" id="tC"></div>
+    <div class="input"><span class="p">›</span> <span class="cursor"></span></div></div>
+   <div class="note" id="nC">Only the app's toast and "Assigned by me" rail change. Codex knows nothing until Blair types "what's new?".</div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Simplest to build</li><li>No surprises</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Blair relays everything by hand</li><li>Not seamless</li></ul></div></div>
+ </div>
+</div>
+
+<div class="foot"><div><b>Same in all three</b><p>Events come from the app, so any tool gets them the same way. The tool can also ask for them with <span class="code">console-connect events --since last</span>. The app's toast and the "Assigned by me" rail update regardless.</p></div>
+<div><b>A can grow into B later</b><p>A per-event toggle (for example "auto-answer questions, but queue submissions") could come later without changing the model. Starting with A keeps every AI action visible first.</p></div></div>
+</div>
+<script>
+const EV={
+ e1:{short:'Sam submitted "Expired invite retry"',a:'Sam submitted "Expired invite retry". Read the package and suggest a review.',
+  b:['<div class="c">$ console-connect package show expired-invite-retry</div>','<div class="d">  3 files · 34 tests passed · PR #41</div>','<div class="c">$ console-connect review propose --accept</div>','<div class="y">  ● Waiting for Blair to confirm</div>'],nb:true},
+ e2:{short:'Casey\'s AI asked a question',a:'Casey\'s AI asked on "Invite email copy": "Should the email mention the 24-hour limit?" Answer it.',
+  b:['<div class="c">$ console-connect task reply invite-email-copy \\</div>','<div class="c">    "Yes, say links last 24 hours."</div>','<div class="g">  ✓ Posted as Blair (via Codex)</div>']},
+ e3:{short:'Sam\'s session is stuck',a:'Sam\'s Claude Code session paused: usage limit reached. Suggest what to do.',
+  b:['<div class="d">  Sam\'s session paused: usage limit</div>','<div class="c">$ console-connect task reply expired-invite-retry \\</div>','<div class="c">    "Hand off to Codex when you\'re back?"</div>','<div class="g">  ✓ Posted as Blair (via Codex)</div>']},
+};
+let queue=[];
+function fire(k){
+ const e=EV[k];queue.push(e);
+ // A
+ bA.textContent=queue.length+(queue.length===1?' update':' updates');bA.classList.remove('on');void bA.offsetWidth;bA.classList.add('on');
+ iA.innerHTML=`<div class="hint">From the team · not sent · press Enter to let Codex handle ${queue.length===1?'it':'them'}</div><span class="p">›</span> ${queue.length===1?e.a:queue.length+' updates: '+queue.map(x=>x.short).join('; ')+'. Handle them.'} <span class="cursor"></span>`;
+ // B
+ tB.insertAdjacentHTML('beforeend',`<div class="new"><div class="p">› [from app] ${e.a}</div>${e.b.join('')}</div>`);
+ if(e.nb)nB.classList.add('on');
+ // C
+ nC.classList.add('on');
+}
+function reset(){queue=[];tA.innerHTML='';tB.innerHTML='';tC.innerHTML='';bA.classList.remove('on');iA.innerHTML='<span class="p">›</span> <span class="cursor"></span>';nB.classList.remove('on');nC.classList.remove('on')}
+e1.onclick=()=>fire('e1');e2.onclick=()=>fire('e2');e3.onclick=()=>fire('e3');rs.onclick=reset;
+document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>{document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o))});
+</script>
+</body></html>

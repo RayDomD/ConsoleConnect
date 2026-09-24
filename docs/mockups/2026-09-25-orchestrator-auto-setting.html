@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q9: the auto-handle setting</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1440px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 18px;color:var(--muted);max-width:100ch}
+.opts{display:grid;grid-template-columns:1fr 1.25fr;gap:20px;align-items:start}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:10px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.page{border-radius:12px;background:var(--surface);box-shadow:var(--lift-2);padding:22px 26px}
+.page h2{font:400 24px/1.1 Newsreader,serif;margin:0 0 4px}.page>p{margin:0 0 16px;color:var(--muted);font-size:13px}
+.setrow{display:flex;align-items:flex-start;gap:14px;padding:12px 0;box-shadow:inset 0 -1px 0 var(--border)}
+.setrow:last-child{box-shadow:none}
+.setrow .txt{flex:1}.setrow b{display:block;font-weight:600;font-size:14px}.setrow span{color:var(--muted);font-size:13px}
+.sw{flex:none;width:38px;height:22px;border-radius:99px;background:var(--border);position:relative;cursor:pointer;transition:background-color 180ms var(--ease);border:0;padding:0;margin-top:2px}
+.sw::after{content:'';position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:var(--surface);box-shadow:0 1px 2px rgb(0 0 0/.2);transition:transform 180ms var(--ease)}
+.sw[aria-checked=true]{background:var(--accent)}.sw[aria-checked=true]::after{transform:translateX(16px)}
+.sw:active::after{width:19px}
+.sub{padding-left:0;margin-top:4px;transition:opacity 180ms var(--ease)}.sub.off{opacity:.45;pointer-events:none}
+.ev{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:10px 12px;border-radius:10px;background:var(--canvas);margin-top:8px}
+.ev small{grid-column:1/-1;color:var(--muted);font-size:12px}
+.seg{display:inline-flex;border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:transparent;padding:5px 10px;font:500 12px 'Instrument Sans';color:var(--muted);cursor:pointer}
+.seg button.on{background:var(--selection);color:var(--text)}
+.never{font-size:12px;color:var(--muted);padding:5px 10px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--border)}
+.cap{display:flex;align-items:center;gap:10px;margin-top:12px;font-size:13px}
+.num{font:500 13px 'Instrument Sans';width:62px;text-align:center;padding:5px;border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);background:var(--surface)}
+.strip{margin-top:16px;border-radius:10px;overflow:hidden;box-shadow:var(--lift-1)}
+.strip .top{display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12px;color:var(--muted);background:var(--surface);box-shadow:inset 0 -1px 0 var(--border)}
+.strip .tool{display:inline-flex;align-items:center;gap:6px;color:var(--text);font-weight:600}.strip .tool i{width:12px;height:12px;border-radius:3px;background:#1F1F1F}
+.auto{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--warn-bg);color:var(--warning)}
+.auto i{width:6px;height:6px;border-radius:50%;background:var(--warning)}
+.log{background:var(--well);padding:8px 12px;font:11.5px/1.7 'JetBrains Mono',monospace;color:#62676C}
+.log b{color:var(--text);font-weight:500}
+.sp{flex:1}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px;font-size:12px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.fixed{margin-top:18px;font-size:13px;border-top:1px solid var(--border);padding-top:10px;display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.fixed b{display:block;margin-bottom:3px}.fixed p{margin:0;color:var(--muted)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q9 · The auto-handle setting</div>
+<h1>How much control should the auto setting give?</h1>
+<p class="lede">Q8 settled it: events are typed in but not sent by default, and auto-handling is an opt-in setting. This screen asks how fine-grained that setting is. Both options live in Settings › Orchestrator, are off by default, and are stored per person on their own computer. The switches work.</p>
+
+<div class="opts">
+ <div class="opt" data-o="A"><div class="oh"><span class="l">A</span><b>One switch</b></div>
+  <div class="page"><h2>Orchestrator</h2><p>How your orchestrator console hears about team updates.</p>
+   <div class="setrow"><div class="txt"><b>Let the orchestrator handle updates automatically</b><span>When on, updates are sent to your orchestrator right away instead of waiting for you to press Enter. This uses your AI tool's usage.</span></div><button class="sw" role="switch" aria-checked="false"></button></div>
+  </div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Nothing to learn</li></ul></div><div class="con"><b>Trade-off</b><ul><li>All or nothing: auto-answering questions also means auto-reacting to every submission and stall</li><li>No brake on usage</li></ul></div></div>
+ </div>
+
+ <div class="opt sel" data-o="B"><div class="oh"><span class="l">B</span><b>Switch, per-event choices, and a limit</b><span class="rec">Recommended</span></div>
+  <div class="page"><h2>Orchestrator</h2><p>How your orchestrator console hears about team updates.</p>
+   <div class="setrow"><div class="txt"><b>Let the orchestrator handle updates automatically</b><span>Uses your AI tool's usage. Approvals still wait for your click.</span>
+     <div class="sub" id="subB">
+      <div class="ev"><b style="font-size:13px">A teammate's AI asks a question</b><div class="seg"><button>Ask me</button><button class="on">Auto</button></div><small>The orchestrator answers in the task discussion as you (via Codex).</small></div>
+      <div class="ev"><b style="font-size:13px">A session gets stuck or runs out of usage</b><div class="seg"><button>Ask me</button><button class="on">Auto</button></div><small>The orchestrator suggests a next step to the owner. It can't switch their tool.</small></div>
+      <div class="ev"><b style="font-size:13px">Work is submitted</b><div class="seg"><button class="on">Ask me</button><button>Auto</button></div><small>On Auto, the orchestrator reads the package and prepares a review. Accepting always waits for your click.</small></div>
+      <div class="ev"><b style="font-size:13px">Assign follow-up work</b><span class="never">Always asks you</span><small>New assignments from an automatic run are typed in for you to send. Nothing new is handed out unseen.</small></div>
+      <div class="cap">Pause auto after <input class="num" value="20"> automatic runs a day<span class="sp"></span></div>
+     </div></div><button class="sw" id="swB" role="switch" aria-checked="true"></button></div>
+  </div>
+  <div class="strip"><div class="top"><span class="tool"><i></i>Codex</span><span>Orchestrator</span><span class="auto"><i></i>Auto · 3 of 20 today</span><span class="sp"></span><span>Pause</span></div>
+   <div class="log">10:02 <b>auto</b> answered Casey's question on Invite email copy<br>10:40 <b>auto</b> suggested a Codex handoff to Sam (usage limit)<br>11:15 <b>queued</b> Sam submitted Expired invite retry. Press Enter to review.</div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Auto where it saves time (questions, stalls), ask-me where judgment matters</li><li>A daily limit protects your subscription</li><li>The orchestrator shows when auto is on, with a log</li></ul></div><div class="con"><b>Trade-off</b><ul><li>A few more settings to understand</li></ul></div></div>
+ </div>
+</div>
+
+<div class="fixed"><div><b>Fixed either way (Q4)</b><p>Accepting work, requesting changes, and approving decisions always wait for a person's click, even on auto.</p></div>
+<div><b>Always visible</b><p>Anything done automatically is posted as the person, marked "via Codex", and logged in the orchestrator strip.</p></div>
+<div><b>Stops on its own</b><p>Auto pauses when the app closes, the daily limit is reached, or the person presses Pause.</p></div></div>
+</div>
+<script>
+document.querySelectorAll('.sw').forEach(s=>s.onclick=e=>{e.stopPropagation();const v=s.getAttribute('aria-checked')!=='true';s.setAttribute('aria-checked',v);if(s.id==='swB')subB.classList.toggle('off',!v)});
+document.querySelectorAll('.seg').forEach(g=>g.querySelectorAll('button').forEach(b=>b.onclick=e=>{e.stopPropagation();g.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x===b))}));
+document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)));
+document.querySelectorAll('input').forEach(i=>i.onclick=e=>e.stopPropagation());
+</script>
+</body></html>

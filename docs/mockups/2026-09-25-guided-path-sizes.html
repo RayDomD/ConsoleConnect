@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q15: keeping the learning curve flat</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--blue:#355CA8;--blue-bg:#E4EAF1;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1440px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 18px;color:var(--muted);max-width:110ch}
+h3.sec{font:600 14px 'Instrument Sans';margin:0 0 10px}
+.code{font:12px 'JetBrains Mono',monospace}
+.who{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:26px}
+.w{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:14px 16px;font-size:13px}
+.w .top{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.av{display:inline-grid;place-items:center;width:30px;height:30px;border-radius:50%;background:var(--selection);color:var(--accent);font-weight:700;font-size:12px}
+.w b{font-size:14px}.w small{display:block;color:var(--muted);font-size:12px}
+.meter{display:flex;gap:3px;margin-left:auto}.meter i{width:14px;height:6px;border-radius:3px;background:var(--border)}.meter i.f{background:var(--accent)}
+.w ul{margin:0;padding-left:16px;color:var(--muted)}.w li{margin:3px 0}
+.w .new{color:var(--text)}
+.opts{display:grid;grid-template-columns:repeat(2,1fr);gap:18px}
+.opt{border-radius:14px;padding:14px;background:rgb(252 251 245/.45);cursor:pointer;transition:box-shadow 150ms var(--ease),background-color 150ms var(--ease)}
+.opt:hover{background:rgb(252 251 245/.75)}.opt.sel{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.oh{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}.oh b{font:600 15px 'Instrument Sans'}.oh .l{font:600 12px 'Instrument Sans';color:var(--accent)}
+.rec{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:auto}
+.opt>p{margin:0 0 10px;font-size:13px;color:var(--muted)}
+.win{border-radius:12px;overflow:hidden;background:var(--surface);box-shadow:var(--lift-2)}
+.bar{height:40px;display:flex;align-items:center;gap:8px;padding:0 14px;box-shadow:inset 0 -1px 0 var(--border);font-size:12.5px}.bar .m{color:var(--muted)}
+.inner{padding:14px 16px;font-size:13px}
+.inner input.t{width:100%;border:0;border-radius:8px;box-shadow:inset 0 0 0 1px var(--border);background:var(--surface);padding:9px 10px;font:500 14px 'Instrument Sans';margin-bottom:10px}
+.sizes{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.size{border-radius:10px;padding:10px;background:var(--canvas);cursor:pointer;transition:box-shadow 150ms var(--ease),transform 120ms var(--ease)}
+.size:active{transform:scale(.98)}.size.on{background:var(--surface);box-shadow:0 0 0 2px var(--accent)}
+.size b{display:block;font-size:13px}.size small{color:var(--muted);font-size:11.5px}
+.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:12px;align-items:center}
+.chip{font-size:11.5px;padding:2px 9px;border-radius:99px;background:var(--selection);color:var(--accent);font-weight:500;transition:opacity 150ms var(--ease)}
+.chip.off{background:transparent;box-shadow:inset 0 0 0 1px var(--border);color:var(--muted);text-decoration:line-through;opacity:.7}
+.next{margin-top:12px;display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--canvas)}
+.btn{border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:8px 14px;font:600 13px 'Instrument Sans';box-shadow:inset 0 1px 0 rgb(255 255 255/.16),0 1px 2px rgb(20 40 30/.25);cursor:pointer}
+.sp{flex:1}.muted{color:var(--muted);font-size:12px}
+.card{border-radius:10px;background:var(--canvas);padding:10px 12px;margin-bottom:8px}
+.card b{display:block}.card .chips{margin-top:6px}
+.pc{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px;font-size:12px}
+.pc b{display:block;margin-bottom:2px}.pc ul{margin:0;padding-left:16px;color:var(--muted)}.pc li{margin:2px 0}.pro b{color:var(--accent)}.con b{color:var(--warning)}
+.flat{margin-top:22px;display:grid;grid-template-columns:repeat(4,1fr);gap:16px;font-size:13px}
+.flat div{border-top:1px solid var(--border);padding-top:10px}.flat b{display:block;margin-bottom:3px}.flat p{margin:0;color:var(--muted)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q15 · Learning curve</div>
+<h1>Yes, there's a learning curve, but it lands on one person, and the app can carry most of it</h1>
+<p class="lede">Most of the team never sees the path as something to learn. Workers still get a task, approve it, and submit. The person orchestrating is the one who meets new ideas: stages, playbooks, and skipping. The question is how to make that first week easy.</p>
+
+<h3 class="sec">Who has to learn what</h3>
+<div class="who">
+ <div class="w"><div class="top"><span class="av">S</span><div><b>Workers</b><small>Sam, Casey</small></div><div class="meter"><i class="f"></i><i></i><i></i><i></i></div></div>
+  <ul><li>Nothing new: tasks arrive as before</li><li class="new">They see a "Spec" link in the brief, which their AI reads for them</li></ul></div>
+ <div class="w"><div class="top"><span class="av">R</span><div><b>Reviewers</b><small>Riley</small></div><div class="meter"><i class="f"></i><i class="f"></i><i></i><i></i></div></div>
+  <ul><li>Same Accept and Request changes as before</li><li class="new">New: approving a spec (it's a decision, so a familiar flow)</li></ul></div>
+ <div class="w"><div class="top"><span class="av">B</span><div><b>Whoever orchestrates</b><small>Blair</small></div><div class="meter"><i class="f"></i><i class="f"></i><i class="f"></i><i></i></div></div>
+  <ul><li class="new">Idea cards, five stage names, when to skip</li><li>But the orchestrator AI runs every playbook, so Blair picks and the AI does the work</li></ul></div>
+</div>
+
+<h3 class="sec">How should an idea pick its stages?</h3>
+<div class="opts">
+ <div class="opt sel" data-o="A"><div class="oh"><span class="l">A</span><b>Pick a size, and the path follows</b><span class="rec">Recommended</span></div>
+  <p>One choice when you create the idea. The size sets which stages apply, so nobody has to know the whole system. There's always one "Next step" button.</p>
+  <div class="win"><div class="bar"><b>New idea</b></div><div class="inner">
+   <input class="t" value="Session timeout feels too long">
+   <div class="sizes" id="sizes">
+    <div class="size" data-s="0"><b>Quick fix</b><small>A bug or small change. Straight to a task.</small></div>
+    <div class="size on" data-s="1"><b>Feature</b><small>A few tasks. Grill, then tickets.</small></div>
+    <div class="size" data-s="2"><b>Big idea</b><small>Many sessions. Full path with a spec.</small></div></div>
+   <div class="chips" id="chips"></div>
+   <div class="next"><span id="nx"></span><span class="sp"></span><button class="btn" id="nb">Next step</button></div>
+   <p class="muted" style="margin:8px 0 0">You can change the size later. Skipping a stage inside a size asks for one line of why.</p></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>One decision, in plain words</li><li>Quick fixes never feel slowed down</li><li>"Next step" means nobody memorizes the order</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Someone might pick the wrong size (it's changeable)</li></ul></div></div></div>
+
+ <div class="opt" data-o="B"><div class="oh"><span class="l">B</span><b>Every idea shows all five stages</b></div>
+  <p>The same card for everything. People skip stages one by one, each with a reason.</p>
+  <div class="win"><div class="bar"><b>Ideas</b></div><div class="inner">
+   <div class="card"><b>Fix typo in invite email</b><div class="chips"><span class="chip off">grill · skipped: "typo"</span><span class="chip off">spec · skipped: "typo"</span><span class="chip off">tickets · skipped</span><span class="chip">build</span><span class="chip">review</span></div></div>
+   <div class="card"><b>Session timeout feels too long</b><div class="chips"><span class="chip">grill</span><span class="chip">spec</span><span class="chip">tickets</span><span class="chip">build</span><span class="chip">review</span></div></div>
+   <p class="muted" style="margin:6px 0 0">A typo fix needs three skip reasons.</p></div></div>
+  <div class="pc"><div class="pro"><b>Good</b><ul><li>Fully consistent</li></ul></div><div class="con"><b>Trade-off</b><ul><li>Small work feels bureaucratic</li><li>Everyone has to learn all five stages up front</li></ul></div></div></div>
+</div>
+
+<div class="flat"><div><b>Plain words in the UI</b><p>Stages show as "Talk it through", "Write it up", "Split into tasks", "Build", "Review". "Grill" and "tickets" stay in the playbook command names only.</p></div>
+<div><b>A worked example on day one</b><p>New workspaces get one sample idea, already walked through with its files, to open and read. You can delete it anytime.</p></div>
+<div><b>The AI explains itself</b><p>Each playbook starts by saying in one line what this stage is for and what it will produce.</p></div>
+<div><b>Nothing is required</b><p>Plain tasks still work without ideas. The path is a guide you grow into, not a gate (Q14 B).</p></div></div>
+</div>
+<script>
+const P=[['build','review'],['talk it through','split into tasks','build','review'],['talk it through','write it up','split into tasks','build','review']];
+const ALL=['talk it through','write it up','split into tasks','build','review'];
+const NX=['Next: create the task and assign it','Next: talk it through with your orchestrator','Next: talk it through with your orchestrator'];
+function size(i){document.querySelectorAll('.size').forEach(s=>s.classList.toggle('on',+s.dataset.s===i));chips.innerHTML=ALL.map(a=>`<span class="chip ${P[i].includes(a)?'':'off'}">${a}</span>`).join('');nx.textContent=NX[i]}
+document.querySelectorAll('.size').forEach(s=>s.onclick=e=>{e.stopPropagation();size(+s.dataset.s)});size(1);
+document.querySelectorAll('.opt').forEach(o=>o.onclick=()=>document.querySelectorAll('.opt').forEach(x=>x.classList.toggle('sel',x===o)));
+nb.onclick=e=>e.stopPropagation();
+</script>
+</body></html>

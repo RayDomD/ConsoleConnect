@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Q13: when someone changes a doc</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--canvas:#F4F2E9;--sidebar:#E5E9DF;--surface:#FCFBF5;--text:#253A30;--muted:#5B6B5E;--border:#CDD5C7;--accent:#2D624B;--on-accent:#FCFBF5;--selection:#DCE6D8;--warning:#805517;--warn-bg:#F6EEDF;--danger:#A02F37;--blue:#355CA8;--blue-bg:#E4EAF1;
+--well:#F7F6EF;--ring:0 0 0 1px rgb(37 58 48/.08);--lift-1:var(--ring),0 1px 2px rgb(37 58 48/.07);--lift-2:var(--ring),0 1px 2px rgb(37 58 48/.06),0 12px 28px -14px rgb(37 58 48/.22);--ease:cubic-bezier(.23,1,.32,1)}
+*{box-sizing:border-box}body{margin:0;background:#E9E7DE;color:var(--text);font:14px/1.5 'Instrument Sans',sans-serif;font-variant-numeric:tabular-nums;padding:24px 30px 60px}
+.wrap{max-width:1440px;margin:auto}
+.q{font-size:12px;font-weight:600;color:var(--accent);margin-bottom:4px}
+h1{font:400 28px/1.1 Newsreader,serif;letter-spacing:-.02em;margin:0 0 6px}.lede{margin:0 0 16px;color:var(--muted);max-width:110ch}
+.code{font:12px 'JetBrains Mono',monospace}
+.clar{border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:12px 16px;font-size:13px;margin-bottom:18px;display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.clar b{display:block;margin-bottom:3px}.clar p{margin:0;color:var(--muted)}
+.tl{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-bottom:14px}
+.tl button{border:0;text-align:left;border-radius:8px;padding:8px 10px;background:transparent;color:var(--muted);font:500 12.5px/1.35 'Instrument Sans';cursor:pointer;transition:background-color 150ms var(--ease),transform 120ms var(--ease)}
+.tl button:active{transform:scale(.97)}.tl button.on{background:var(--surface);color:var(--text);box-shadow:var(--lift-1)}
+.tl span{display:block;font-size:11px;font-weight:600;color:var(--accent)}
+.stage{display:grid;grid-template-columns:1fr 360px;gap:22px;align-items:start}
+.screen{border-radius:12px;background:var(--surface);box-shadow:var(--lift-2);overflow:hidden;min-height:470px;display:flex;flex-direction:column}
+.bar{height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;box-shadow:inset 0 -1px 0 var(--border);font-size:13px}.bar .m{color:var(--muted)}
+.body{padding:16px 22px;flex:1}
+.body h2{font:400 26px/1.1 Newsreader,serif;margin:0 0 8px}
+.meta{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;padding:2px 9px 2px 7px;border-radius:99px;background:var(--selection)}
+.pill.w{background:var(--warn-bg);color:var(--warning)}.pill.b{background:var(--blue-bg);color:var(--blue)}
+.card{border-radius:12px;box-shadow:var(--lift-2);overflow:hidden;margin-top:14px;max-width:720px}
+.card .top{padding:12px 16px}.card p{margin:0}
+.facts{display:grid;grid-template-columns:110px 1fr;gap:6px 14px;padding:4px 16px 12px;font-size:13px}
+.facts dt{color:var(--muted);font-size:12px}.facts dd{margin:0}
+.files span{display:block;font:12px 'JetBrains Mono',monospace}
+.a{color:#346F4B}.x{color:#A02F37}
+.flag{display:flex;gap:10px;align-items:flex-start;background:var(--warn-bg);color:var(--warning);padding:10px 14px;font-size:13px}
+.flag b{color:var(--text);display:block}
+.foot{display:flex;align-items:center;gap:10px;padding:10px 16px;background:var(--canvas);box-shadow:inset 0 1px 0 var(--border)}
+.sp{flex:1}
+.btn{border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);padding:8px 14px;font:600 13px 'Instrument Sans';box-shadow:inset 0 1px 0 rgb(255 255 255/.16),0 1px 2px rgb(20 40 30/.25)}
+.btn2{border:0;border-radius:8px;background:transparent;color:var(--text);padding:8px 14px;font:500 13px 'Instrument Sans';box-shadow:inset 0 0 0 1px var(--border)}
+.term{background:var(--well);padding:12px 16px;font:12px/1.65 'JetBrains Mono',monospace;flex:1}
+.term .c{color:#355CA8}.term .d{color:#62676C}.term .h{color:var(--text);font-weight:500;margin-top:6px}.term .y{color:#805517}.term .g{color:#346F4B}.term .r{color:#A02F37}
+.gh{border-radius:12px;box-shadow:var(--lift-1);padding:12px 14px;margin-top:14px;max-width:720px;font-size:13px;background:#FCFDFE}
+.gh b{display:block}.gh .row{display:flex;align-items:center;gap:8px;margin-top:6px;color:var(--muted);font-size:12.5px}
+.ok{color:#346F4B;font-weight:600}.no{color:#A02F37;font-weight:600}
+.ex h2{font:400 21px/1.15 Newsreader,serif;margin:0 0 8px}.ex p{margin:0 0 10px;color:var(--muted)}
+.ex ul{margin:0;padding-left:18px;color:var(--muted);font-size:13px}.ex li{margin:4px 0}
+.rule{font-size:12px;border-radius:8px;background:var(--surface);box-shadow:var(--lift-1);padding:9px 11px;margin-top:12px}.rule b{display:block;margin-bottom:2px}
+.new{font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--selection);color:var(--accent);margin-left:6px}
+.guard{margin-top:20px;border-radius:12px;background:var(--surface);box-shadow:var(--lift-1);padding:14px 16px}
+.guard h3{margin:0 0 8px;font:600 14px 'Instrument Sans'}
+.guard .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;font-size:12.5px}.guard .g4 b{display:block;margin-bottom:2px}.guard .g4 p{margin:0;color:var(--muted)}
+</style></head><body>
+<div class="wrap">
+<div class="q">Q13 · Follow-up: what happens when someone changes a doc</div>
+<h1>Casey, a Contributor, edits an ADR. What happens?</h1>
+<div class="clar">
+ <div><b>First, a correction</b><p>Q11 made orchestration open to everyone. The permission is <i>who can assign</i>, not who can orchestrate. Changing docs is a separate thing again: docs are files in Git, so the rules for changing them are the repository's rules, not Console Connect's.</p></div>
+ <div><b>The short answer</b><p>Casey's edit stays on her task branch. The reviewer is told plainly that it changes an ADR, and nobody's brief sees it until it's merged to main on GitHub, under GitHub's own branch protection. The spec already says Console Connect never bypasses repository permissions.</p></div>
+</div>
+
+<div class="tl" id="tl"></div>
+<div class="stage"><div class="screen" id="scr"></div><div class="ex" id="ex"></div></div>
+
+<div class="guard"><h3>What B adds to the project map <span class="new">new, part of B</span></h3><div class="g4">
+ <div><b>Mark docs as protected</b><p>The map can tag entries <span class="code">protected</span>, for example the spec, ADRs, DESIGN.md, and decisions.</p></div>
+ <div><b>Flag it in review</b><p>A package that touches a protected doc shows a warning, and only an Owner or Reviewer can accept it, which Q11's roles already enforce.</p></div>
+ <div><b>Official decisions can't drift</b><p>The host keeps the approved text. If <span class="code">docs/decisions/*.md</span> changes outside the app, the brief shows "differs from the approved decision" and uses the approved one.</p></div>
+ <div><b>Direct pushes are visible</b><p>If the repo allows pushing straight to main, Console Connect can't stop it (GitHub decides), but the brief flags "changed on main outside a package".</p></div>
+</div></div>
+</div>
+<script>
+const S=[
+{l:'Casey edits it in her task',s:`<div class="bar"><span class="m">Smoke team</span><span class="m">/</span><b>Session timeout</b><span class="pill" style="margin-left:6px"><i style="width:7px;height:7px;border-radius:50%;background:var(--accent);display:inline-block"></i>Running</span></div>
+<div class="term"><div class="d">Claude Code · task/session-timeout · worktree ..\\cc-wt\\session-timeout</div><div style="margin-top:6px;color:#2D624B">&gt; The ADR says tokens last 24h. Update it to 12h to match this change.</div>
+<div class="d">  Editing docs/adr/2026-09-20-sessions.md (+1 −1)</div><div class="d">  Editing src/hosted-core.ts (+4 −2)</div><div class="g">  ✓ Changes are on task/session-timeout only</div>
+<div class="h">Meanwhile, everyone else's brief:</div><div class="d">  Project map (docs/README.md @ main)</div><div class="d">  docs/adr/2026-09-20-sessions.md: tokens last 24h   ← unchanged</div></div>`,
+e:`<h2>Nothing changes for anyone yet</h2><p>Casey's AI edits the ADR in her worktree, on her task branch. That's normal Git: her copy changes, and main doesn't.</p><ul><li>Blair's orchestrator reads the map and docs from main, so it still sees 24h</li><li>Other workers read their own branches</li></ul><div class="rule"><b>Spec rule</b>Each coding task gets its own branch and worktree. Git owns document history.</div>`},
+{l:'Blair reviews the package',s:`<div class="bar"><span class="m">Smoke team</span><span class="m">/</span><b>Session timeout</b><span class="pill w" style="margin-left:6px">Ready for your review</span></div>
+<div class="body"><h2>Session timeout</h2><div class="meta">Casey · Contributor · Claude Code</div>
+<div class="card"><div class="flag"><span>●</span><div><b>This package changes a protected doc</b>docs/adr/2026-09-20-sessions.md: "tokens last 24h" becomes "12h". Protected docs need an Owner or Reviewer to accept.</div></div>
+<div class="top"><p>Shortens session tokens to 12h and updates the sessions ADR to match.</p></div>
+<dl class="facts"><dt>Changed</dt><dd class="files"><span>src/hosted-core.ts <span class="a">+4</span> <span class="x">−2</span></span><span>docs/adr/2026-09-20-sessions.md <span class="a">+1</span> <span class="x">−1</span> <span class="pill b" style="font-size:11px;padding:0 7px">protected</span></span></dd><dt>Checked</dt><dd>npm test · 34 passed</dd><dt>Source</dt><dd class="code">task/session-timeout · PR #44</dd></dl>
+<div class="foot"><button class="btn2">View ADR change</button><span class="sp"></span><button class="btn2">Request changes</button><button class="btn">Accept package</button></div></div></div>`,
+e:`<h2>The reviewer is told plainly</h2><p>Because the map tags <span class="code">docs/adr/</span> as protected, the package card leads with a warning and shows the exact line that changed.</p><ul><li>Casey can't accept her own package, and as a Contributor she couldn't accept anyone's</li><li>Blair decides whether the ADR change is right</li><li>If Blair's orchestrator is on auto for submissions (Q9), it only prepares a review, and Blair still clicks</li></ul><div class="rule"><b>Existing rule</b>Only an Owner or Reviewer, other than the author, can accept a package.</div>`},
+{l:'GitHub merges it',s:`<div class="bar"><span class="m">github.com/example/demo</span><span class="m">/</span><b>Pull request #44</b></div>
+<div class="body"><div class="gh"><b>Update session timeout to 12h</b><div class="row">task/session-timeout → main</div>
+<div class="row"><span class="ok">✓</span> Accepted in Console Connect by Blair (work package)</div>
+<div class="row"><span class="ok">✓</span> Approved on GitHub by Blair</div>
+<div class="row"><span class="ok">✓</span> Branch protection: 1 approval required · CODEOWNERS: docs/adr/ → @blair</div>
+<div class="row"><span class="ok">✓</span> Merged</div></div>
+<div class="gh" style="background:#FFF9F0"><b>If Casey tried to push to main directly</b><div class="row"><span class="no">✗</span> Rejected by GitHub branch protection</div><div class="row">Console Connect doesn't decide this. The repository's settings do.</div></div></div>`,
+e:`<h2>GitHub has the final say</h2><p>Accepting the package in Console Connect and approving the PR on GitHub are separate steps, as the spec requires. Branch protection and CODEOWNERS can require a specific person for <span class="code">docs/adr/</span>.</p><div class="rule"><b>Spec rule</b>Console Connect does not treat work-package acceptance as a GitHub approval or bypass repository permissions and branch rules.</div><div class="rule"><b>Recommendation for your repo</b>Protect main and add CODEOWNERS for docs/adr, the spec, and DESIGN.md. It's a GitHub setting, not app code.</div>`},
+{l:'Everyone sees the new ADR',s:`<div class="bar"><span class="m">Smoke team</span><span class="m">/</span><b>Orchestrator</b></div>
+<div class="term"><div class="c">$ console-connect brief</div><div class="h">Project map (docs/README.md @ main)</div><div class="d">  docs/adr/2026-09-20-sessions.md   updated 2 min ago · PR #44 · Casey</div><div class="d">  tokens last 12h</div>
+<div class="h">Heads-up</div><div class="y">  A protected doc changed on main since your last brief:</div><div class="y">  docs/adr/2026-09-20-sessions.md (accepted by Blair, merged via PR #44)</div>
+<div class="h" style="margin-top:12px">If someone pushed to main without a package:</div><div class="r">  docs/adr/2026-09-20-sessions.md changed on main outside a package (commit 7d2f…)</div>
+<div class="h" style="margin-top:12px">If an official decision file was edited by hand:</div><div class="r">  docs/decisions/use-oauth.md differs from the approved decision. Using the approved text.</div></div>`,
+e:`<h2>After merge, it's the new truth</h2><p>Once it's on main, the next brief for the orchestrator and for new tasks shows the updated ADR, plus a one-time heads-up that a protected doc changed and how it got there.</p><ul><li>Workers already mid-task see it when they update their branch</li><li>Edits that skip the package path are flagged, not silently trusted</li><li>Official decisions stay anchored to the approved text on the host</li></ul>`},
+];
+function go(i){tl.innerHTML=S.map((x,j)=>`<button class="${j===i?'on':''}" data-i="${j}"><span>Step ${j+1}</span>${x.l}</button>`).join('');tl.querySelectorAll('button').forEach(b=>b.onclick=()=>go(+b.dataset.i));scr.innerHTML=S[i].s;ex.innerHTML=S[i].e}
+go(0);
+</script>
+</body></html>
