@@ -16,7 +16,10 @@ export interface WorkPackage {
   deliverables: string[]; verification: string; questions: string;
   submittedAt?: string; reviewedBy?: string; reviewNote?: string;
 }
-export interface Message { id: string; taskId?: string; authorId: string; body: string; createdAt: string }
+export interface Message {
+  id: string; taskId?: string; authorId: string; body: string; createdAt: string;
+  replyToId?: string; version?: number; editedAt?: string; deletedAt?: string;
+}
 export interface Decision {
   id: string; title: string; body: string; proposedBy: string; createdAt: string;
   status: 'proposed' | 'official' | 'superseded'; documentCommit?: string;
@@ -44,7 +47,11 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ id: identifier, type: z.literal('submit-package'), taskId: identifier, revision }),
   z.object({ id: identifier, type: z.literal('accept-package'), taskId: identifier, revision }),
   z.object({ id: identifier, type: z.literal('request-changes'), taskId: identifier, revision, note: z.string().trim().min(1).max(8000) }),
-  z.object({ id: identifier, type: z.literal('post-message'), taskId: identifier.optional(), body: z.string().trim().min(1).max(8000) }),
+  z.object({ id: identifier, type: z.literal('post-message'), taskId: identifier.optional(),
+    replyToId: identifier.optional(), body: z.string().trim().min(1).max(8000) }),
+  z.object({ id: identifier, type: z.literal('edit-message'), messageId: identifier,
+    version: revision, body: z.string().trim().min(1).max(8000) }),
+  z.object({ id: identifier, type: z.literal('unsend-message'), messageId: identifier, version: revision }),
   z.object({ id: identifier, type: z.literal('propose-decision'), decisionId: identifier,
     title: z.string().trim().min(1).max(160).regex(/^[^\r\n]+$/), body: z.string().trim().min(1).max(32000),
     supersedesId: identifier.optional(), affectedTaskIds: z.array(identifier).max(100).optional() }),

@@ -42,8 +42,28 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
   }
   if (command.type === 'post-message') {
     if (command.taskId && !state.tasks.some(task => task.id === command.taskId)) throw new RequestError(404, 'Task not found.');
+    if (command.replyToId) {
+      const parent = state.messages.find(message => message.id === command.replyToId);
+      if (!parent || parent.deletedAt || parent.taskId !== command.taskId) throw new RequestError(400, 'Reply to a visible message in this conversation.');
+    }
     state.messages.push({ id: command.id, taskId: command.taskId, authorId: actor.id,
-      body: command.body, createdAt: new Date().toISOString() });
+      replyToId: command.replyToId, body: command.body, createdAt: new Date().toISOString(), version: 1 });
+    return;
+  }
+  if (command.type === 'edit-message' || command.type === 'unsend-message') {
+    const message = state.messages.find(item => item.id === command.messageId);
+    if (!message) throw new RequestError(404, 'Message not found.');
+    if (message.authorId !== actor.id) throw new RequestError(403, 'Only the author can change this message.');
+    if (message.deletedAt) throw new RequestError(409, 'This message was already unsent.');
+    if ((message.version ?? 1) !== command.version) throw new RequestError(409, 'This message changed. Review it before trying again.');
+    if (command.type === 'edit-message') {
+      message.body = command.body;
+      message.editedAt = new Date().toISOString();
+    } else {
+      message.body = '';
+      message.deletedAt = new Date().toISOString();
+    }
+    message.version = command.version + 1;
     return;
   }
   const task = state.tasks.find(item => item.id === command.taskId);

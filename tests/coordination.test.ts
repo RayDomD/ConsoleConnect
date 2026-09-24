@@ -144,6 +144,31 @@ test('members can post and read workspace-wide messages without a task', async (
   expect(state.data.messages[0].taskId).toBeUndefined();
 });
 
+test('replies, edits, and unsends keep authorship and conversation boundaries', async () => {
+  const host = await workspace();
+  const sam = await teammate(host.url, host.token);
+  const send = (token: string, command: object) => api(host.url, token, '/commands', { id: randomUUID(), ...command });
+  const messageId = randomUUID();
+  expect((await api(host.url, host.token, '/commands', { id: messageId, type: 'post-message', body: 'First draft' })).status).toBe(200);
+  expect((await send(sam.token, { type: 'edit-message', messageId, version: 1, body: 'Changed by Sam' })).status).toBe(403);
+  expect((await send(host.token, { type: 'edit-message', messageId, version: 1, body: 'Updated draft' })).status).toBe(200);
+  expect((await send(host.token, { type: 'edit-message', messageId, version: 1, body: 'Stale draft' })).status).toBe(409);
+  const replyId = randomUUID();
+  expect((await api(host.url, sam.token, '/commands', { id: replyId, type: 'post-message', replyToId: messageId,
+    body: 'I can review it.' })).status).toBe(200);
+  const taskId = randomUUID();
+  await send(host.token, { type: 'create-task', taskId, title: 'Check chat', description: '', assigneeId: null });
+  expect((await send(sam.token, { type: 'post-message', taskId, replyToId: messageId, body: 'Wrong thread' })).status).toBe(400);
+  expect((await send(host.token, { type: 'unsend-message', messageId, version: 2 })).status).toBe(200);
+  expect((await send(host.token, { type: 'edit-message', messageId, version: 3, body: 'Bring it back' })).status).toBe(409);
+  const state = await api(host.url, sam.token, '/state');
+  expect(state.data.messages).toMatchObject([
+    { id: messageId, body: '', authorId: state.data.members[0].id, version: 3 },
+    { id: replyId, replyToId: messageId, body: 'I can review it.', authorId: sam.memberId },
+  ]);
+  expect(state.data.messages[0].deletedAt).toBeTruthy();
+});
+
 test('unassigned work can be claimed or assigned with recipient approval', async () => {
   const host = await workspace();
   const sam = await teammate(host.url, host.token);
