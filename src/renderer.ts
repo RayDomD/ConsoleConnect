@@ -1,5 +1,5 @@
 import { loadTheme, selectTheme, themes, type ThemeId } from './themes';
-import type { Idea, IdeaSize, Message, Snapshot, Task, WorkPackage } from './coordination';
+import type { Idea, IdeaSize, IdeaStage, Message, Snapshot, Task, WorkPackage } from './coordination';
 import { waitingOn } from './blockers';
 import { commandSchema, ideaGate, ideaPaths, ideaStages, toolSchema, type AssigningRule } from './coordination/_internal/protocol';
 import { Terminal } from '@xterm/xterm';
@@ -103,6 +103,7 @@ let showIdeas = false;
 let ideaDraft: { title: string; note: string; size: IdeaSize } | null = null;
 let skippingIdeaId: string | null = null;
 let skipDraft = '';
+let confirmingDeleteIdeaId: string | null = null;
 // The docs setup offer: shown to the Owner until they answer, once the project folder is known.
 const docsSetupKey = (workspaceId: string) => `console-connect.docs-setup.${workspaceId}`;
 let docsPlan: { workspaceId: string; missing: string[] | null } | null = null;
@@ -966,6 +967,15 @@ function officeCardMarkup(card: OfficeCard, meId: string) {
   return `<article class="office-card" data-flip="office-${escape(card.memberId)}"><div class="office-card-head"><span class="avatar" aria-hidden="true">${initial}</span><strong>${escape(card.name)}${mine ? ' (you)' : ''}</strong>${pill}</div>${what}${console}${huddle}${action ? `<div class="office-actions">${action}</div>` : ''}</article>`;
 }
 
+// What each stage asks of the team, in plain words; the playbook command sits behind Copy command (critique 2026-09-25).
+const stageWork: Record<IdeaStage, string> = {
+  talk: 'Agree on what it is and why, with your orchestrator.',
+  write: 'Write the spec and propose it as a decision.',
+  split: 'Split it into tasks and link them here.',
+  build: 'Work the linked tasks through their consoles.',
+  review: 'Check what shipped against what was agreed.',
+};
+
 const sizeHints: Record<IdeaSize, string> = {
   quick: 'A bug or small change. Straight to a task.',
   feature: 'A few tasks. Talk it through, then split.',
@@ -990,7 +1000,7 @@ function ideaCardMarkup(idea: Idea) {
   const lead = me?.role === 'owner' || me?.role === 'reviewer';
   const short = idea.id.slice(0, 8);
   const tasks = snapshot!.tasks.filter(task => idea.taskIds.includes(task.id));
-  const skips = idea.skipped.map(item => `<li>Skipped ${escape(stageNames[item.stage])}: “${escape(item.reason)}” · ${escape(person(item.by))}</li>`).join('');
+  const skips = idea.skipped.map(item => `<li>${escape(stageNames[item.stage])}: “${escape(item.reason)}” · ${escape(person(item.by))}</li>`).join('');
   const files = idea.documents.map(item => `<li><span>${escape(stageNames[item.stage])}</span><code>${escape(item.path)}</code></li>`).join('');
   const taskRows = tasks.map(task => `<li><button class="text-button idea-task" data-action="open-task" data-task="${task.id}"><i class="status-dot status-${task.status}" aria-hidden="true"></i>${escape(task.title)}<small>${escape(taskListNote(snapshot!.tasks, task))}</small></button></li>`).join('');
   let next = '<p class="idea-next-line">Done.</p>';
@@ -998,12 +1008,13 @@ function ideaCardMarkup(idea: Idea) {
   if (idea.stage !== 'done') {
     const gate = ideaGate(idea, snapshot!.tasks, snapshot!.decisions);
     const last = ideaPaths[idea.size].at(-1) === idea.stage;
-    const hint = idea.stage === 'build' ? 'Work the linked tasks through their consoles.' : `Run <code>console-connect playbook ${idea.stage} ${short}</code> in the orchestrator.`;
+    const copy = idea.stage === 'build' ? '' : `<button class="text-button inline-link" data-action="copy-playbook" data-command="console-connect playbook ${idea.stage} ${short}" title="console-connect playbook ${idea.stage} ${short}">Copy command</button>`;
+    const hint = `${escape(stageWork[idea.stage])} ${copy}`;
     const ready = idea.stage === 'talk' && idea.readyBy ? ` Marked ready by ${escape(person(idea.readyBy))}.` : '';
     const then = recommendNext(idea);
     const resize = suggestSize(idea);
     next = `<p class="idea-next-line"><strong>${escape(stageNames[idea.stage])}</strong> ${hint}${ready}</p>${gate ? `<p class="idea-gate">${escape(gate)}</p>` : ''}`
-      + `${then ? `<p class="idea-then">Then: ${escape(then.text)}</p>` : ''}`
+      + `${then ? `<p class="idea-then">Then: ${escape(stageNames[then.stage])}, because ${escape(then.reason)}.</p>` : ''}`
       + `${resize ? `<p class="idea-resize">${escape(resize.text)} <button class="text-button inline-link" data-action="resize-idea" data-idea="${idea.id}" data-size="${resize.size}">Make it a ${escape(sizeNames[resize.size])}</button></p>` : ''}`;
     if (skippingIdeaId === idea.id) {
       actions = `<form id="skip-idea" class="idea-skip-form" data-idea="${idea.id}"><label>Why skip ${escape(stageNames[idea.stage])}?<input name="reason" maxlength="200" required value="${escape(skipDraft)}" placeholder="One line, for example: small fix, no spec"></label><div class="actions"><button type="submit" class="secondary">Skip stage</button><button type="button" class="text-button" data-action="cancel-skip-idea">Cancel</button></div></form>`;
@@ -1018,8 +1029,8 @@ function ideaCardMarkup(idea: Idea) {
   return `<article class="idea-card" data-idea="${idea.id}"><div class="idea-card-head"><h2>${escape(idea.title)}</h2>${idea.sample ? '<span class="office-pill">Sample</span>' : ''}<span class="idea-id">${short}</span></div>`
     + `${idea.note ? `<p class="idea-note">${escape(idea.note)}</p>` : ''}${ideaPathMarkup(idea)}`
     + `<div class="idea-next">${next}${actions}</div>`
-    + `${files ? `<ul class="idea-files">${files}</ul>` : ''}${taskRows ? `<ul class="idea-tasks">${taskRows}</ul>` : ''}${skips ? `<ul class="idea-skips">${skips}</ul>` : ''}`
-    + `<div class="idea-foot"><label class="idea-size">Size<select data-idea-size="${idea.id}">${sizes}</select></label>${canDelete ? `<button class="text-button" data-action="delete-idea" data-idea="${idea.id}">Delete</button>` : ''}</div></article>`;
+    + `${files ? `<h3 class="idea-section">Files</h3><ul class="idea-files">${files}</ul>` : ''}${taskRows ? `<h3 class="idea-section">Tasks</h3><ul class="idea-tasks">${taskRows}</ul>` : ''}${skips ? `<h3 class="idea-section">Skipped</h3><ul class="idea-skips">${skips}</ul>` : ''}`
+    + `<div class="idea-foot"><label class="idea-size">Size<select data-idea-size="${idea.id}">${sizes}</select></label>${!canDelete ? '' : confirmingDeleteIdeaId === idea.id ? `<span class="idea-delete-confirm" role="group" aria-label="Confirm delete">Delete this idea? It cannot be restored.<button class="secondary" data-action="delete-idea" data-idea="${idea.id}">Delete</button><button class="text-button" data-action="cancel-delete-idea">Keep</button></span>` : `<button class="text-button" data-action="${idea.sample ? 'delete-idea' : 'confirm-delete-idea'}" data-idea="${idea.id}">Delete</button>`}</div></article>`;
 }
 
 function newIdeaMarkup() {
@@ -1036,7 +1047,7 @@ function newIdeaMarkup() {
 // A new workspace starts with one worked example (guided path ADR Q24). It writes nothing until someone runs its playbook.
 function sampleIdea() {
   return { type: 'create-idea', ideaId: crypto.randomUUID(), title: 'Add a welcome note to the README', size: 'feature', sample: true,
-    note: 'A sample to learn the path on. Open the orchestrator and run console-connect playbook talk with the id on this card to see how an idea is talked through. Delete it when you are done.' };
+    note: 'A sample to learn the path on. Use Copy command below, then paste it into the orchestrator console to see how an idea is talked through. Delete it when you are done.' };
 }
 
 function docsSetupMarkup() {
@@ -1720,7 +1731,7 @@ app.addEventListener('click', async event => {
       snapshot = null;
       selectedTaskId = null;
       showWorkspaceChat = false; showChatDrawer = false; showOrchestrator = false; showOffice = false; showIdeas = false;
-      orchestratorEvents = []; sharePromptTaskId = null; ideaDraft = null; skippingIdeaId = null;
+      orchestratorEvents = []; sharePromptTaskId = null; ideaDraft = null; skippingIdeaId = null; confirmingDeleteIdeaId = null;
       view = 'review';
       notice = '';
       localStorage.setItem('console-connect.connection', JSON.stringify(connection));
@@ -1741,7 +1752,7 @@ app.addEventListener('click', async event => {
       stopHostedWatch?.(); stopHostedWatch = null;
       window.consoleConnect.stopWatchingWorkspace();
       connection = null; snapshot = null; view = 'dashboard'; notice = ''; currentInvitationLink = '';
-      orchestratorEvents = []; sharePromptTaskId = null; ideaDraft = null; skippingIdeaId = null;
+      orchestratorEvents = []; sharePromptTaskId = null; ideaDraft = null; skippingIdeaId = null; confirmingDeleteIdeaId = null;
       projectSummariesLoadedAt = 0;
       showChatDrawer = false; showWorkspaceChat = false; chatToast = null;
       localStorage.removeItem('console-connect.connection'); render(); return;
@@ -1833,7 +1844,10 @@ app.addEventListener('click', async event => {
     const idea = button.dataset.idea ? snapshot?.ideas?.find(item => item.id === button.dataset.idea) : undefined;
     if (idea && (action === 'mark-idea-ready' || action === 'advance-idea')) { await command(null, { type: action, ideaId: idea.id, revision: idea.revision }); return; }
     if (idea && action === 'resize-idea') { await command(null, { type: 'update-idea', ideaId: idea.id, revision: idea.revision, size: button.dataset.size }); return; }
-    if (idea && action === 'delete-idea') { await command(null, { type: 'delete-idea', ideaId: idea.id }); return; }
+    if (action === 'copy-playbook') { await window.consoleConnect.copyText(button.dataset.command!); notice = 'Command copied. Paste it into the orchestrator console.'; noticeActions = ''; render(); return; }
+    if (action === 'confirm-delete-idea') { confirmingDeleteIdeaId = button.dataset.idea!; render(); return; }
+    if (action === 'cancel-delete-idea') { confirmingDeleteIdeaId = null; render(); return; }
+    if (idea && action === 'delete-idea') { confirmingDeleteIdeaId = null; await command(null, { type: 'delete-idea', ideaId: idea.id }); return; }
     if (action === 'office-watch') {
       selectedTaskId = button.dataset.task!; taskTab = 'console'; showOffice = false; showIdeas = false; render();
       clickAction('[data-action=watch-terminal]');

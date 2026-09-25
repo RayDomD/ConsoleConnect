@@ -573,6 +573,9 @@ try {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/ideas.png', Buffer.from(captured.data, 'base64'));
   }
+  if (!(await evaluate(`${card}.querySelector('[data-action=copy-playbook]')?.dataset.command === 'console-connect playbook review ${smokeIdea.id.slice(0, 8)}'`))) throw new Error('The card did not offer the playbook command behind Copy command.');
+  await evaluate(`${card}.querySelector('[data-action=confirm-delete-idea]').click()`);
+  await until(`${card}?.querySelector('.idea-delete-confirm')?.textContent.includes('cannot be restored')`, 'Delete did not ask for confirmation');
   await evaluate(`${card}.querySelector('[data-action=delete-idea]').click()`);
   await until(`!${card}`, 'Delete did not remove the idea card');
   if (await ideaNamed('Invite links that expire')) throw new Error('Delete did not remove the idea on the host.');

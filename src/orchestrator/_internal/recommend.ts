@@ -20,12 +20,12 @@ export function stageAction(stage: IdeaStage, idea: Pick<Idea, 'id'>) {
 }
 
 /** The stage after the idea's current one on its path, or null when the current stage is its last. */
-export function recommendNext(idea: Pick<Idea, 'id' | 'size' | 'stage'>): { stage: IdeaStage; text: string } | null {
+export function recommendNext(idea: Pick<Idea, 'id' | 'size' | 'stage'>): { stage: IdeaStage; reason: string; text: string } | null {
   if (idea.stage === 'done') return null;
   const path = ideaPaths[idea.size];
   const stage = path[path.indexOf(idea.stage) + 1];
   if (!stage) return null;
-  return { stage, text: `${stageNames[stage]} next: ${stageAction(stage, idea)}, because ${reasons[stage]}.` };
+  return { stage, reason: reasons[stage], text: `${stageNames[stage]} next: ${stageAction(stage, idea)}, because ${reasons[stage]}.` };
 }
 
 /** A different size when simple signals disagree: a Quick fix with several tasks, or a Feature spanning several sessions. */

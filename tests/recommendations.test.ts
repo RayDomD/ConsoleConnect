@@ -12,10 +12,10 @@ function idea(fields: Partial<Idea>): Idea {
 }
 
 test('the next step is the next stage on the size path, with its fixed reason', () => {
-  expect(recommendNext(idea({ size: 'big', stage: 'talk' }))).toEqual({ stage: 'write',
+  expect(recommendNext(idea({ size: 'big', stage: 'talk' }))).toEqual({ stage: 'write', reason: 'a spec gives every task the same contract',
     text: 'Write it up next: run console-connect playbook write eeeeeeee, because a spec gives every task the same contract.' });
   expect(recommendNext(idea({ size: 'feature', stage: 'talk' }))?.stage).toBe('split');
-  expect(recommendNext(idea({ size: 'quick', stage: 'build' }))).toEqual({ stage: 'review',
+  expect(recommendNext(idea({ size: 'quick', stage: 'build' }))).toEqual({ stage: 'review', reason: 'it checks what shipped against what was agreed',
     text: 'Review next: run console-connect playbook review eeeeeeee, because it checks what shipped against what was agreed.' });
   expect(recommendNext(idea({ size: 'quick', stage: 'review' }))).toBeNull();
   expect(recommendNext(idea({ stage: 'done' }))).toBeNull();
