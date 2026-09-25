@@ -484,6 +484,25 @@ try {
   }
   if (!(await evaluate("document.querySelector('.assigned-by-me')?.innerText.includes('Declined by Alex')"))) throw new Error('A declined task did not show as declined to its sender.');
   if (!(await evaluate("document.querySelector('.orchestrator-link .chat-count')?.textContent === '1'"))) throw new Error(`The decline was not queued for the orchestrator: ${await evaluate("document.querySelector('.orchestrator-link .chat-count')?.title")}`);
+  // The Office arranges people into rooms from presence and task state.
+  await evaluate("document.querySelector('[data-action=open-office]').click()");
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("document.querySelector('.office-page')?.innerText.includes('Blair (you)')")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  const claudeTaskId = (await hostCall('/state')).tasks.find(task => task.title === 'Check claude launch').id;
+  await hostCall('/presence', { status: 'here', console: { kind: 'task', taskId: claudeTaskId, tool: 'claude', needsInput: false, shared: true, glimpse: ['Editing src/invitations.ts (+18 -4)', 'Running npm test', '34 passed'] } });
+  for (let attempt = 0; attempt < 40; attempt++) {
+    if (await evaluate("document.querySelector('.office-glimpse')?.textContent.includes('34 passed')")) break;
+    await new Promise(resolve => setTimeout(resolve, 250));
+  }
+  if (!(await evaluate("document.querySelector('.breadcrumb-current')?.textContent === 'Office' && document.querySelector('.office-page')?.innerText.includes('Blair (you)') && document.querySelector('.office-card')?.innerText.includes('Check claude launch') && document.querySelector('.office-glimpse')?.textContent.includes('34 passed')"))) {
+    throw new Error(`The Office did not show its rooms: ${await evaluate("JSON.stringify({ cls: document.querySelector('.desk-content')?.className, display: getComputedStyle(document.querySelector('.office-room')).display, rooms: document.querySelectorAll('.office-room').length, text: document.querySelector('.office-page')?.innerText.slice(0, 500) })")}`);
+  }
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/office.png', Buffer.from(captured.data, 'base64'));
+  }
   if (process.argv.includes('--screenshot')) {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/assigned-by-me.png', Buffer.from(captured.data, 'base64'));

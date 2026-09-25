@@ -92,10 +92,12 @@ export const presenceSchema = z.object({
     kind: z.enum(['task', 'orchestrator']), taskId: identifier.optional(), tool: toolSchema,
     needsInput: z.boolean(), shared: z.boolean(), glimpse: z.array(z.string().max(300)).max(3).optional(),
   }).nullable(),
+  /** The task whose shared console this person is watching, for huddles in the Office. */
+  watching: identifier.optional(),
 });
 export type PresenceInput = z.infer<typeof presenceSchema>;
 export interface PresenceRecord extends PresenceInput { memberId: string; at: string }
-export interface MemberPresence { memberId: string; status: 'here' | 'away' | 'offline'; console: PresenceInput['console']; at: string | null }
+export interface MemberPresence { memberId: string; status: 'here' | 'away' | 'offline'; console: PresenceInput['console']; watching?: string; at: string | null }
 
 export function presenceView(records: PresenceRecord[], memberIds: string[], now: number): MemberPresence[] {
   return memberIds.map(memberId => {
@@ -103,7 +105,7 @@ export function presenceView(records: PresenceRecord[], memberIds: string[], now
     if (!record) return { memberId, status: 'offline', console: null, at: null };
     if (now - Date.parse(record.at) > presenceOfflineMs) return { memberId, status: 'offline', console: null, at: record.at };
     const console = record.console && !record.console.shared ? { ...record.console, glimpse: undefined } : record.console;
-    return { memberId, status: record.status, console, at: record.at };
+    return { memberId, status: record.status, console, ...(record.watching ? { watching: record.watching } : {}), at: record.at };
   });
 }
 

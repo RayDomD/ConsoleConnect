@@ -7,6 +7,7 @@ import { flushPending, loadPending, savePending } from './offline';
 import { hostedAccessToken, hostedProjects, hostedRequest, hostedSignIn, shareHostedTerminal, watchHostedTerminal, watchHostedWorkspace, type SupabaseConnection } from './supabase-client';
 import { invitationLink, parseInvitationLink } from './invitations';
 import { renderDecisionDocument } from './decision-document';
+import { officeRooms, type OfficeCard } from './office';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { consoleReadiness, glimpse, needsInput } from './console-state';
@@ -90,6 +91,10 @@ let manualPackageTaskId: string | null = null;
 // The orchestrator console (orchestrator ADR Q5): one per app, in the linked main folder, with its own terminal.
 const orchestratorKey = 'orchestrator';
 let showOrchestrator = false;
+// The Office (Office ADR Q17): who is here and what they are working on, refreshed while open.
+let showOffice = false;
+const officeRefreshMs = 5_000;
+let renderedPresence = '';
 type OrchestratorSession = { tool: string; workspaceId: string; directory: string; startedAt: number; endedAt: number; active: boolean; output: string; lastOutputAt: number };
 let orchestrator = null as OrchestratorSession | null;
 let orchestratorTerminal: Terminal | null = null;
@@ -199,13 +204,14 @@ function presencePayload() {
   const planning = !task && orchestrator?.active && orchestrator.workspaceId === snapshot?.workspace.id
     ? { kind: 'orchestrator' as const, tool: orchestrator.tool, needsInput: false, shared: false }
     : null;
-  return { status: here ? 'here' as const : 'away' as const, console: task ?? planning };
+  return { status: here ? 'here' as const : 'away' as const, console: task ?? planning, ...(watchedTaskId ? { watching: watchedTaskId } : {}) };
 }
 
 function sendPresence(force = false) {
   if (view !== 'review' || !snapshot || !connection) return;
   const payload = presencePayload();
-  const key = JSON.stringify(payload);
+  // Keyed by workspace and member too, so switching projects or identity always sends a fresh heartbeat.
+  const key = JSON.stringify([snapshot.workspace.id, snapshot.memberId, payload]);
   if (!force && key === lastPresenceSent && Date.now() - lastPresenceAt < presenceHeartbeatMs) return;
   lastPresenceSent = key; lastPresenceAt = Date.now();
   void request('/presence', payload).catch(() => {});
@@ -235,6 +241,8 @@ async function stopHostedShare(taskId: string) {
   hostedShares.delete(taskId);
   await share?.stop();
 }
+
+setInterval(() => { if (showOffice && view === 'review' && snapshot) void refresh(); }, officeRefreshMs);
 
 // Worker side of stalls: after this long waiting on its owner, the session is reported so the orchestrator hears.
 const stallAfterMs = 120_000;
@@ -578,7 +586,9 @@ async function refreshOnce() {
     }
     if (connection !== active) return;
     if (!snapshot || next.revision >= snapshot.revision) {
-      const shouldRender = changed || next.revision !== snapshot?.revision || !snapshot;
+      const presenceKey = JSON.stringify(next.presence ?? []);
+      const shouldRender = changed || next.revision !== snapshot?.revision || !snapshot || (showOffice && presenceKey !== renderedPresence);
+      renderedPresence = presenceKey;
       observeTeamMessages(next);
       const previous = snapshot?.workspace.id === next.workspace.id && snapshot.memberId === next.memberId ? snapshot : null;
       queueOrchestratorEvents(detectEvents(previous, next));
@@ -880,6 +890,41 @@ function decisionChangedMarkup(task: Task) {
   return `<div class="decision-changed" role="status"><div><strong>The "${escape(decision.title)}" decision changed</strong><span>Acknowledge it before you submit. Your session keeps running until you decide.</span></div><button class="text-button" data-action="task-tab" data-tab="package">View the change</button><button class="secondary" data-action="ack-and-tell" data-decision="${escape(decision.id)}">Acknowledge and tell ${escape(toolNames[terminalTool] ?? 'your tool')}</button></div>`;
 }
 
+function officeCardMarkup(card: OfficeCard, meId: string) {
+  const mine = card.memberId === meId;
+  const tool = card.tool ? escape(toolNames[card.tool] ?? card.tool) : '';
+  const initial = escape(card.name.slice(0, 1).toUpperCase());
+  const pill = card.status === 'away' ? '<span class="office-pill">Away</span>' : '';
+  const what = card.task ? `<p class="office-task">${escape(card.task.title)}${tool ? ` · ${tool}` : ''}</p>`
+    : card.tool ? `<p class="office-task">Orchestrator · ${tool}</p>`
+    : card.reviewCount ? `<p class="office-task">${card.reviewCount} ${card.reviewCount === 1 ? 'package waits' : 'packages wait'} for review</p>` : '';
+  const console = !card.task ? '' : card.shared
+    ? `<pre class="office-glimpse" aria-label="Last lines of ${escape(card.name)}'s console">${card.glimpse.map(escape).join('\n') || 'Waiting for output'}</pre>`
+    : '<p class="office-private">Console is private</p>';
+  const huddle = card.watchers.length ? `<p class="office-huddle"><span class="avatar" aria-hidden="true">${initial}</span>${card.watchers.map(name => `<span class="avatar" aria-hidden="true">${escape(name.slice(0, 1).toUpperCase())}</span>`).join('')}<span>${card.watchers.map(escape).join(', ')} ${card.watchers.length === 1 ? 'is' : 'are'} watching</span></p>` : '';
+  const action = mine || !card.task ? ''
+    : card.shared ? `<button class="secondary" data-action="office-watch" data-task="${escape(card.task.id)}" data-office="watch">Watch</button>`
+    : `<button class="text-button" data-action="ask-to-watch" data-task="${escape(card.task.id)}" data-office="ask">Ask to watch</button>`;
+  return `<article class="office-card" data-flip="office-${escape(card.memberId)}"><div class="office-card-head"><span class="avatar" aria-hidden="true">${initial}</span><strong>${escape(card.name)}${mine ? ' (you)' : ''}</strong>${pill}</div>${what}${console}${huddle}${action ? `<div class="office-actions">${action}</div>` : ''}</article>`;
+}
+
+function officeMarkup() {
+  const rooms = officeRooms(snapshot!, snapshot!.presence ?? []);
+  const meId = snapshot!.memberId;
+  // Needs a hand and Around always show; the other rooms appear only when someone is in them.
+  const room = (title: string, cards: OfficeCard[], empty: string) => !cards.length && !empty ? '' : `<section class="office-room"><div class="section-head"><h2 class="section-label">${title}</h2><span class="section-count">${cards.length}</span></div>${cards.length ? `<div class="office-cards">${cards.map(card => officeCardMarkup(card, meId)).join('')}</div>` : `<p class="rail-meta">${empty}</p>`}</section>`;
+  const around = rooms.around.map(card => `<li data-flip="office-${escape(card.memberId)}"><span class="avatar" aria-hidden="true">${escape(card.name.slice(0, 1).toUpperCase())}</span>${escape(card.name)}${card.memberId === meId ? ' (you)' : ''}<small>${card.status === 'away' ? 'Away' : 'Here'}</small></li>`).join('');
+  const offline = rooms.offline.length ? `<p class="rail-meta office-offline">Offline: ${rooms.offline.map(card => escape(card.name)).join(', ')}</p>` : '';
+  const mineRunning = terminalTaskId && terminalSessionActive;
+  const shareSwitch = mineRunning ? `<button class="office-share" role="switch" aria-checked="${consoleShared(terminalTaskId!)}" data-action="office-share">${consoleShared(terminalTaskId!) ? 'Shown in Office' : 'Private'}</button>` : '';
+  return `<div class="office-head"><div><h1>Office</h1><div class="meta"><span>${escape(snapshot!.workspace.name)}</span><span aria-hidden="true">·</span><span>${rooms.here} here${rooms.away ? ` · ${rooms.away} away` : ''}</span></div></div>${shareSwitch}</div>`
+    + room('Needs a hand', rooms.needsHand, "Nobody's stuck right now.")
+    + room('Building', rooms.building, '')
+    + room('Reviewing', rooms.reviewing, '')
+    + room('Planning', rooms.planning, '')
+    + `<section class="office-room"><div class="section-head"><h2 class="section-label">Around</h2><span class="section-count">${rooms.around.length}</span></div>${around ? `<ul class="office-around">${around}</ul>` : '<p class="rail-meta">Everyone here is busy.</p>'}${offline}</section>`;
+}
+
 function orchestratorRailMarkup() {
   const handedOut = assignedByMeMarkup();
   const activity = cliActivity.length
@@ -990,7 +1035,7 @@ function render() {
   const renderedTask = snapshot?.tasks.find(task => task.id === selectedTaskId) ?? snapshot?.tasks[0];
   const nextTerminalSource = renderedTask?.id === terminalTaskId ? 'local'
     : renderedTask?.id === watchedTaskId ? 'shared' : null;
-  const keepTerminal = Boolean(terminal && view === 'review' && taskTab === 'console' && !showWorkspaceChat && !showOrchestrator
+  const keepTerminal = Boolean(terminal && view === 'review' && taskTab === 'console' && !showWorkspaceChat && !showOrchestrator && !showOffice
     && renderedTask?.id === terminalRenderedTaskId && nextTerminalSource === terminalRenderSource);
   const terminalHadFocus = keepTerminal && terminal?.element?.contains(document.activeElement);
   if (!keepTerminal) {
@@ -1010,7 +1055,7 @@ function render() {
   const selected = snapshot.tasks.find(task => task.id === selectedTaskId) ?? snapshot.tasks[0];
   const me = snapshot.members.find(member => member.id === snapshot!.memberId);
   const unread = unreadTeamMessages();
-  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(sentenceCase(task.status))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || showOrchestrator || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : showOrchestrator ? 'Orchestrator' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(sentenceCase(task.status))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || showOrchestrator || showOffice || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : showOrchestrator ? 'Orchestrator' : showOffice ? 'Office' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
   document.querySelector('.desk-content')?.classList.toggle('console-active', (taskTab === 'console' && !showWorkspaceChat) || showOrchestrator);
   document.querySelector('.topbar div')!.innerHTML = `<button class="text-button topbar-jump" data-action="open-palette" title="Jump to a task, person, or action">Jump<kbd>Ctrl</kbd><kbd>K</kbd></button><button class="secondary topbar-chat" data-action="open-chat-drawer" title="Team chat (C)">Chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button><button class="text-button" data-action="disconnect">Projects</button>`;
   if (me?.role !== 'owner') document.querySelector('.invite')?.remove();
@@ -1028,10 +1073,16 @@ function render() {
   }
   document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link ${showWorkspaceChat ? 'active' : ''}" data-action="workspace-chat">Team chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button>`);
   document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link orchestrator-link ${showOrchestrator ? 'active' : ''}" data-action="open-orchestrator">Orchestrator${orchestratorEvents.length ? `<span class="chat-count" aria-label="${orchestratorEvents.length} updates waiting" title="${escape(eventLine(orchestratorEvents))}">${orchestratorEvents.length}</span>` : orchestrator?.active && orchestrator.workspaceId === snapshot.workspace.id ? '<i class="status-dot status-running" aria-label="running"></i>' : ''}</button>`);
+  const hereCount = (snapshot.presence ?? []).filter(item => item.status === 'here').length;
+  document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link office-link ${showOffice ? 'active' : ''}" data-action="open-office">Office${hereCount ? `<span class="section-count" aria-label="${hereCount} here">${hereCount} here</span>` : ''}</button>`);
   if (showWorkspaceChat) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
     document.querySelector('.desk-content')!.classList.add('chat-page');
     document.querySelector('.desk-content')!.innerHTML = `${chatRoomMarkup()}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}`;
+  } else if (showOffice) {
+    document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
+    document.querySelector('.desk-content')!.classList.add('office-page');
+    document.querySelector('.desk-content')!.innerHTML = `${officeMarkup()}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}`;
   } else if (showOrchestrator) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
     document.querySelector('.desk-content')!.innerHTML = `${orchestratorMarkup()}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}`;
@@ -1136,7 +1187,7 @@ function render() {
   }
   const chatStream = document.querySelector<HTMLElement>('#team-chat-stream');
   if (chatStream) chatStream.scrollTop = chatWasAtBottom ? chatStream.scrollHeight : previousChatScroll;
-  const deskKey = `${selected?.id}|${taskTab}|${showWorkspaceChat}|${showOrchestrator}`;
+  const deskKey = `${selected?.id}|${taskTab}|${showWorkspaceChat}|${showOrchestrator}|${showOffice}`;
   regionScrollSelectors.forEach((selector, index) => {
     const region = document.querySelector(selector);
     if (region && (selector !== '.desk' || deskKey === renderedDeskKey)) region.scrollTop = previousRegionScroll[index] ?? 0;
@@ -1331,6 +1382,7 @@ function paletteItems(): PaletteItem[] {
     { label: 'New task', kind: 'Action', hint: 'N', run: () => clickAction('[data-action=new-task]') },
     { label: 'Open team chat', kind: 'Action', hint: 'C', run: () => clickAction('[data-action=open-chat-drawer]') },
     { label: 'Open orchestrator', kind: 'Action', run: () => clickAction('[data-action=open-orchestrator]') },
+    { label: 'Open the Office', kind: 'Action', run: () => clickAction('[data-action=open-office]') },
     { label: 'Propose decision', kind: 'Action', run: () => clickAction('[data-action=propose-decision]') },
     { label: 'Invite member', kind: 'Action', run: () => clickAction('[data-action=invite]') },
     { label: 'Projects', kind: 'Action', run: () => clickAction('.topbar [data-action=disconnect]') },
@@ -1387,7 +1439,7 @@ app.addEventListener('click', async event => {
   if (button.dataset.task) {
     if (watchedTaskId && watchedTaskId !== button.dataset.task) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
     if (selectedTaskId !== button.dataset.task) taskTab = 'overview';
-    selectedTaskId = button.dataset.task; showWorkspaceChat = false; showOrchestrator = false; render(); return;
+    selectedTaskId = button.dataset.task; showWorkspaceChat = false; showOrchestrator = false; showOffice = false; render(); return;
   }
   const action = button.dataset.action;
   const task = snapshot?.tasks.find(item => item.id === selectedTaskId) ?? snapshot?.tasks[0];
@@ -1468,7 +1520,7 @@ app.addEventListener('click', async event => {
       currentInvitationLink = '';
       snapshot = null;
       selectedTaskId = null;
-      showWorkspaceChat = false; showChatDrawer = false; showOrchestrator = false;
+      showWorkspaceChat = false; showChatDrawer = false; showOrchestrator = false; showOffice = false;
       orchestratorEvents = [];
       view = 'review';
       notice = '';
@@ -1481,7 +1533,7 @@ app.addEventListener('click', async event => {
     }
     if (action === 'workspace-chat') {
       if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
-      showWorkspaceChat = true; showOrchestrator = false; showChatDrawer = false; markTeamChatRead(); render(); return;
+      showWorkspaceChat = true; showOrchestrator = false; showOffice = false; showChatDrawer = false; markTeamChatRead(); render(); return;
     }
     if (action === 'task-tab') { taskTab = button.dataset.tab as TaskTab; render(); return; }
     if (action === 'disconnect') {
@@ -1504,7 +1556,7 @@ app.addEventListener('click', async event => {
       render();
       return;
     }
-    if (action === 'new-task') { showWorkspaceChat = false; showOrchestrator = false; document.querySelector('.desk-content')!.innerHTML = `<h1>New task</h1><form id="new-task"><label>Title<input name="title" required></label><label>Description<textarea name="description"></textarea></label><label>Assign to<select name="assigneeId"><option value="">Unassigned</option>${snapshot!.members.map(member => `<option value="${member.id}">${escape(member.name)}</option>`).join('')}</select></label><button type="submit">Create task</button></form>`; return; }
+    if (action === 'new-task') { showWorkspaceChat = false; showOrchestrator = false; showOffice = false; document.querySelector('.desk-content')!.innerHTML = `<h1>New task</h1><form id="new-task"><label>Title<input name="title" required></label><label>Description<textarea name="description"></textarea></label><label>Assign to<select name="assigneeId"><option value="">Unassigned</option>${snapshot!.members.map(member => `<option value="${member.id}">${escape(member.name)}</option>`).join('')}</select></label><button type="submit">Create task</button></form>`; return; }
     if (action === 'propose-decision') {
       document.querySelector('.desk-content')!.innerHTML = `<h1>Propose decision</h1><form id="decision"><label>Title<input name="title" required></label><label>Decision<textarea name="body" required></textarea></label><label>Replaces<select name="supersedesId"><option value="">No previous decision</option>${snapshot!.decisions.filter(item => item.status === 'official').map(item => `<option value="${item.id}">${escape(item.title)}</option>`).join('')}</select></label><fieldset><legend>Affected tasks</legend>${snapshot!.tasks.map(item => `<label><input type="checkbox" name="affectedTaskIds" value="${item.id}">${escape(item.title)}</label>`).join('')}</fieldset><button type="submit">Share proposal</button></form>`;
       return;
@@ -1538,6 +1590,28 @@ app.addEventListener('click', async event => {
     }
     if (action === 'copy-invitation') { await window.consoleConnect.copyText(currentInvitationLink); notice = 'Invitation link copied.'; render(); return; }
     // Workspace-level actions: they work before any task exists.
+    if (action === 'open-office') { showOffice = true; showOrchestrator = false; showWorkspaceChat = false; render(); void refresh(); return; }
+    if (action === 'office-watch') {
+      selectedTaskId = button.dataset.task!; taskTab = 'console'; showOffice = false; render();
+      clickAction('[data-action=watch-terminal]');
+      return;
+    }
+    if (action === 'ask-to-watch') {
+      const me = snapshot!.members.find(member => member.id === snapshot!.memberId)?.name ?? 'A teammate';
+      await command(null, { type: 'post-message', taskId: button.dataset.task, body: `${me} would like to watch this console. Share it from the console strip if that's all right.` });
+      notice = 'Asked in the task discussion.'; render(); return;
+    }
+    if (action === 'office-share' && terminalTaskId) {
+      const running = snapshot!.tasks.find(item => item.id === terminalTaskId);
+      if (connection?.mode === 'supabase') {
+        if (hostedShares.has(terminalTaskId)) await stopHostedShare(terminalTaskId);
+        else hostedShares.set(terminalTaskId, { ...await shareHostedTerminal(connection, terminalTaskId), pending: '' });
+      } else if (running) {
+        await window.consoleConnect.setTerminalSharing({ taskId: running.id, enabled: !snapshot!.sharedTerminalTaskIds?.includes(running.id) });
+        await refresh();
+      }
+      sendPresence(true); render(); return;
+    }
     if (action === 'draft-project-map') {
       const repositoryPath = await currentProjectFolder();
       if (!repositoryPath) return;
@@ -1557,7 +1631,7 @@ app.addEventListener('click', async event => {
     if (action === 'copy-cli-folder') { await window.consoleConnect.copyText(cliFolderPath); notice = 'Folder copied.'; render(); return; }
     if (action === 'open-orchestrator') {
       if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
-      showOrchestrator = true; showWorkspaceChat = false; render();
+      showOrchestrator = true; showWorkspaceChat = false; showOffice = false; render();
       void loadProjectKnowledge(null).then(() => { if (showOrchestrator) render(); }).catch(() => {});
       return;
     }

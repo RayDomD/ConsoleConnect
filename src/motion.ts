@@ -4,6 +4,8 @@
 const EASE_OUT = 'cubic-bezier(.23,1,.32,1)';
 const EASE_IN = 'cubic-bezier(.4,0,1,1)';
 const GLIDE_MS = 220;
+// Office cards ease into a new room so the move is noticed (Office ADR Q17).
+const ROOM_MOVE_MS = 400;
 const DISMISS_MS = 180;
 const PRESS_SOUND_KEY = 'console-connect.press-sound';
 
@@ -15,6 +17,7 @@ export interface MotionState {
   toastOpen: boolean;
   messageIds: Set<string> | null;
   unread: number;
+  flips: Map<string, DOMRect>;
 }
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -32,6 +35,7 @@ export function captureMotion(root: HTMLElement): MotionState {
     toastOpen: Boolean(root.querySelector('.chat-toast')),
     messageIds: stream ? new Set([...stream.querySelectorAll<HTMLElement>('[data-message-id]')].map(item => item.dataset.messageId!)) : null,
     unread: Number(root.querySelector('.chat-count')?.textContent ?? 0),
+    flips: new Map([...root.querySelectorAll<HTMLElement>('[data-flip]')].map(item => [item.dataset.flip!, item.getBoundingClientRect()])),
   };
 }
 
@@ -51,6 +55,16 @@ function indicate(container: HTMLElement | null, active: HTMLElement | null, cla
 }
 
 export function playMotion(root: HTMLElement, before: MotionState) {
+  if (!reduced()) {
+    for (const item of root.querySelectorAll<HTMLElement>('[data-flip]')) {
+      const from = before.flips.get(item.dataset.flip!);
+      if (!from) continue;
+      const to = item.getBoundingClientRect();
+      const dx = from.left - to.left, dy = from.top - to.top;
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+      item.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }], { duration: ROOM_MOVE_MS, easing: EASE_OUT });
+    }
+  }
   indicate(root.querySelector('.task-list'), root.querySelector('.task-list .active'), 'task-indicator', before.task);
   indicate(root.querySelector('.task-tabs'), root.querySelector('.task-tab.active'), 'tab-indicator', before.tab);
   if (!before.drawerOpen) root.querySelector('.chat-drawer')?.classList.add('chat-drawer-enter');
