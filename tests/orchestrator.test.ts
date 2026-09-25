@@ -133,5 +133,25 @@ describe('console-connect commands in the app', () => {
     await runCliCommand(['task', 'create', '--title', 'Notes'], auto, api);
     expect(sent).toHaveLength(1);
   });
+
+  test('brief tells the tool the team, the rule as it applies to the caller, open work, and what needs a click', async () => {
+    const { api, state } = workspace();
+    state.settings = { assigningRule: 'leads' };
+    state.tasks[1] = { ...state.tasks[1]!, status: 'submitted', package: { summary: 'Retry', sourceRef: 'main', deliverables: [], verification: '', questions: '' } };
+    const owner = (await runCliCommand(['brief'], context, { ...api, autoSummary: () => 'Auto: questions' })).text;
+    expect(owner).toContain('Smoke team (https://github.com/example/demo). You are Blair, Owner.');
+    expect(owner).toContain('Team: Blair (Owner), Sam (Contributor)');
+    expect(owner).toContain('Assigning: Owners and Reviewers assign, Contributors claim or suggest. You can assign.');
+    expect(owner).toContain('Open: 2 tasks · 1 waiting for your review · Auto: questions');
+    expect(owner).toContain('Needs your click in Console Connect: accepting work, requesting changes, approving decisions, approving your own incoming tasks.');
+    expect(owner).toMatch(/You can: .*task assign/);
+    state.memberId = sam;
+    const contributor = (await runCliCommand(['brief'], context, api)).text;
+    expect(contributor).toContain('You cannot assign: claim unassigned tasks, or suggest an assignee with task reply.');
+    expect(contributor).not.toMatch(/You can: .*task assign/);
+    expect(contributor).toContain('Auto: off');
+    const forTask = (await runCliCommand(['brief', '--task', 'abbb'], context, api)).text;
+    expect(forTask).toContain('Task "Expired invite retry" (abbbbbbb) for Sam');
+  });
 });
 

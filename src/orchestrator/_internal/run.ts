@@ -1,4 +1,5 @@
 import type { CommandInput, Member, Snapshot, Task, Tool } from '../../coordination';
+import { taskBrief } from './brief';
 
 // What the app lends the command runner: the current snapshot and a way to send a command as the person.
 // `send` receives a task id for task-revision commands (the app adds the task's revision) and null otherwise.
@@ -11,6 +12,8 @@ export interface WorkspaceApi {
   draftPackage(draft: PackageDraft): Promise<void>;
   /** Keeps a hand-out from an automatic run for the person to send or discard (orchestrator ADR Q9). */
   hold(item: { argv: string[]; summary: string }): void;
+  /** The caller's automatic-handling state for the brief, e.g. "Auto: questions"; absent means off. */
+  autoSummary?(): string;
 }
 export interface PackageDraft { taskId: string; summary: string; checks: string; questions: string; via?: Tool }
 export interface ReviewProposal { id: string; taskId: string; action: 'accept' | 'changes'; note: string; via?: Tool }
@@ -67,16 +70,37 @@ function taskLine(state: Snapshot, task: Task) {
   return `${shortId(task.id)}  ${sentenceCase(task.status)}  ${task.title}${assignee ? ` · ${assignee}` : ''}`;
 }
 
-function brief(state: Snapshot, me: Member): CliResult {
+const assigningRules = {
+  anyone: 'Anyone assigns to anyone',
+  leads: 'Owners and Reviewers assign, Contributors claim or suggest',
+  owner: 'Only the Owner assigns, everyone else claims or suggests',
+} as const;
+
+function canAssign(state: Snapshot, me: Member) {
+  const rule = state.settings?.assigningRule ?? 'anyone';
+  return rule === 'anyone' || (rule === 'leads' && me.role !== 'contributor') || me.role === 'owner';
+}
+
+// Read live, so it is the same for every tool and never goes stale (orchestrator ADR Q12).
+function brief(state: Snapshot, me: Member, auto: string): CliResult {
   const tasks = openTasks(state);
+  const reviews = me.role === 'contributor' ? 0 : tasks.filter(task => task.status === 'submitted' && task.assigneeId !== me.id).length;
+  const assign = canAssign(state, me);
+  const rule = assigningRules[state.settings?.assigningRule ?? 'anyone'];
+  const commands = ['task list/show/create', ...(assign ? ['task assign'] : []), 'task claim/decline/reply', 'ask', 'package draft/show',
+    ...(me.role === 'contributor' ? [] : ['review propose']), 'brief --task <id>'];
   const text = [
     `${state.workspace.name} (${state.workspace.repository}). You are ${me.name}, ${sentenceCase(me.role)}.`,
     `Team: ${state.members.map(member => `${member.name} (${sentenceCase(member.role)})`).join(', ')}`,
-    `Open tasks: ${tasks.length}`,
+    `Assigning: ${rule}. ${assign ? 'You can assign.' : 'You cannot assign: claim unassigned tasks, or suggest an assignee with task reply.'}`,
+    `Open: ${tasks.length} tasks${reviews ? ` · ${reviews} waiting for your review` : ''} · ${auto}`,
     ...tasks.map(task => `  ${taskLine(state, task)}`),
-    'Run console-connect help for the commands.',
+    `You can: ${commands.map(command => `console-connect ${command}`).join(', ')}.`,
+    'Needs your click in Console Connect: accepting work, requesting changes, approving decisions, approving your own incoming tasks.',
+    'Run console-connect help for the details.',
   ].join('\n');
-  return { text, data: { workspace: state.workspace, you: me, members: state.members, tasks: tasks.map(task => taskSummary(state, task)) } };
+  return { text, data: { workspace: state.workspace, you: me, members: state.members, assigningRule: state.settings?.assigningRule ?? 'anyone', canAssign: assign,
+    tasks: tasks.map(task => taskSummary(state, task)), waitingForYourReview: reviews, auto } };
 }
 
 export async function runCliCommand(argv: string[], context: CliContext, api: WorkspaceApi): Promise<CliResult> {
@@ -89,9 +113,15 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
   const send: WorkspaceApi['send'] = (taskId, fields) => api.send(taskId, context.tool ? { ...fields, via: context.tool } as CommandInput : fields);
   const me = state.members.find(member => member.id === state.memberId)!;
   const [group, verb, ...rest] = argv;
-  const { positional, named } = options(group === 'ask' ? [] : rest);
+  const { positional, named } = options(group === 'ask' ? [] : group === 'brief' ? [verb, ...rest].filter((item): item is string => item !== undefined) : rest);
 
-  if (group === 'brief') return brief(state, me);
+  if (group === 'brief') {
+    if (named.task) {
+      const task = findTask(state, named.task);
+      return { text: taskBrief(state, task), data: { task: taskSummary(state, task) } };
+    }
+    return brief(state, me, api.autoSummary?.() ?? 'Auto: off');
+  }
   if (group === 'ask') {
     if (!context.taskId) throw new CliError('Run ask inside a task console, or use task reply <id> <message>.');
     const body = [verb, ...rest].filter(Boolean).join(' ').trim();

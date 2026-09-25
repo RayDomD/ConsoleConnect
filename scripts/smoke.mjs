@@ -331,6 +331,10 @@ try {
     { shell: process.platform === 'win32', env: { ...process.env, CONSOLE_CONNECT_PIPE: pipe, ...(tool ? { CONSOLE_CONNECT_TOOL: tool } : {}) } }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr })));
   const listed = await cli(['task', 'list', '--json']);
   if (listed.code !== 0 || !JSON.parse(listed.stdout).tasks.some(task => task.title === 'Review login')) throw new Error(`console-connect task list failed: ${JSON.stringify(listed)}`);
+  const briefed = await cli(['brief']);
+  if (briefed.code !== 0 || !briefed.stdout.includes('You are Alex, Owner.') || !briefed.stdout.includes('Assigning: Anyone assigns to anyone. You can assign.')) {
+    throw new Error(`console-connect brief failed: ${JSON.stringify(briefed)}`);
+  }
   const created = await cli(['task', 'create', '--title', 'From the CLI', '--description', 'Made by console-connect']);
   if (created.code !== 0 || !created.stdout.includes('as Alex')) throw new Error(`console-connect task create failed: ${JSON.stringify(created)}`);
   for (let attempt = 0; attempt < 30; attempt++) {

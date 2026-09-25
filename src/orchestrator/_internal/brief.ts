@@ -14,5 +14,6 @@ export function taskBrief(state: Snapshot, task: Task) {
     ...decisions.map(decision => `Follow the decision "${oneLine(decision.title)}".`),
     'When the work is ready, run console-connect package draft --summary "<what changed>" --checks "<how you verified it>" --questions "<anything still open>".',
     'Ask the team with console-connect ask "<question>".',
+    `For the team and the rules, run console-connect brief --task ${task.id.slice(0, 8)}.`,
   ].join(' ');
 }

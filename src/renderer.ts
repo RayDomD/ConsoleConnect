@@ -132,6 +132,18 @@ function autoRunActive() {
   return true;
 }
 
+// The opener is typed once the orchestrator console is first ready (orchestrator ADR Q12), and waits for Enter.
+let orchestratorOpenerPending = false;
+
+function typeOrchestratorOpener() {
+  if (!orchestratorOpenerPending || !orchestrator?.active || orchestratorReadiness() !== 'ready') return;
+  orchestratorOpenerPending = false;
+  const me = snapshot?.members.find(member => member.id === snapshot?.memberId)?.name ?? 'your';
+  window.consoleConnect.terminalWrite({ taskId: orchestratorKey,
+    data: `You are ${me}'s orchestrator for ${snapshot?.workspace.name ?? 'this project'}. Run console-connect brief to see the team, the rules, and open tasks, then wait for instructions.` });
+  orchestratorTypedAt = Date.now();
+}
+
 function typeOrchestratorEvents() {
   if (!orchestrator?.active || !orchestratorEvents.length || orchestrator.workspaceId !== snapshot?.workspace.id) return;
   if (autoRunActive() || orchestratorTypedAt > orchestratorLastInputAt || orchestratorReadiness() !== 'ready') return;
@@ -707,6 +719,7 @@ setInterval(() => {
   const elapsed = document.querySelector('.session-elapsed');
   if (elapsed && terminalSessionActive) elapsed.textContent = elapsedLabel();
   typeBriefWhenReady();
+  typeOrchestratorOpener();
   typeOrchestratorEvents();
   typeWorkerEvents();
   reportSessionState();
@@ -1450,6 +1463,7 @@ app.addEventListener('click', async event => {
       orchestratorTerminal?.dispose(); orchestratorTerminal = null; orchestratorFit = null;
       const started = { tool, workspaceId: snapshot!.workspace.id, directory: '', startedAt: Date.now(), endedAt: 0, active: true, output: '', lastOutputAt: Date.now() };
       orchestrator = started;
+      orchestratorOpenerPending = true; orchestratorTypedAt = 0; orchestratorLastInputAt = 0;
       try { started.directory = (await window.consoleConnect.runOrchestrator({ repositoryPath, workspaceRepository: snapshot!.workspace.repository, tool })).directory; }
       catch (error) { orchestrator = null; throw error; }
       render(); return;
@@ -1585,6 +1599,11 @@ const cliWorkspace: WorkspaceApi = {
   },
   propose: proposal => { reviewProposals.push(proposal); render(); },
   hold: item => { heldAssignments.push({ id: crypto.randomUUID(), ...item }); render(); },
+  autoSummary: () => {
+    const settings = loadAutoSettings();
+    const kinds = (['questions', 'stalls', 'submissions'] as const).filter(key => settings[key] === 'auto');
+    return !settings.enabled || autoPaused ? 'Auto: off' : `Auto: ${kinds.length ? kinds.join(', ') : 'on, every update asks'}`;
+  },
   draftPackage: saveDraftPackage,
 };
 
