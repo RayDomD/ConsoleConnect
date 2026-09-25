@@ -63,4 +63,10 @@ describe('console-connect commands in the app', () => {
     await expect(runCliCommand(['task', 'fly'], context, api)).rejects.toThrow('Unknown command "task fly"');
     await expect(runCliCommand(['task', 'list'], context, { ...api, snapshot: () => null })).rejects.toThrow('Open a project in Console Connect first.');
   });
+
+  test('commands from a tool console carry the tool so the app can mark them', async () => {
+    const { api, sent } = workspace();
+    await runCliCommand(['task', 'reply', 'abbb', 'On it.'], { ...context, tool: 'codex' }, api);
+    expect(sent[0]!.fields).toMatchObject({ type: 'post-message', via: 'codex' });
+  });
 });

@@ -1,4 +1,4 @@
-import type { CommandInput, Member, Snapshot, Task } from '../../coordination';
+import type { CommandInput, Member, Snapshot, Task, Tool } from '../../coordination';
 
 // What the app lends the command runner: the current snapshot and a way to send a command as the person.
 // `send` receives a task id for task-revision commands (the app adds the task's revision) and null otherwise.
@@ -6,7 +6,8 @@ export interface WorkspaceApi {
   snapshot(): Snapshot | null;
   send(taskId: string | null, fields: CommandInput): Promise<void>;
 }
-export interface CliContext { cwd: string; taskId: string | null }
+// `tool` is the AI tool the caller runs in, when known; commands are marked with it ("via Codex").
+export interface CliContext { cwd: string; taskId: string | null; tool?: Tool }
 export interface CliResult { text: string; data: unknown }
 export class CliError extends Error {}
 
@@ -70,6 +71,7 @@ function brief(state: Snapshot, me: Member): CliResult {
 export async function runCliCommand(argv: string[], context: CliContext, api: WorkspaceApi): Promise<CliResult> {
   const state = api.snapshot();
   if (!state) throw new CliError('Open a project in Console Connect first.');
+  const send: WorkspaceApi['send'] = (taskId, fields) => api.send(taskId, context.tool ? { ...fields, via: context.tool } as CommandInput : fields);
   const me = state.members.find(member => member.id === state.memberId)!;
   const [group, verb, ...rest] = argv;
   const { positional, named } = options(group === 'ask' ? [] : rest);
@@ -79,7 +81,7 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
     if (!context.taskId) throw new CliError('Run ask inside a task console, or use task reply <id> <message>.');
     const body = [verb, ...rest].filter(Boolean).join(' ').trim();
     if (!body) throw new CliError('Write the question after ask.');
-    await api.send(null, { type: 'post-message', taskId: context.taskId, body });
+    await send(null, { type: 'post-message', taskId: context.taskId, body });
     return { text: `Asked on "${findTask(state, context.taskId).title}" as ${me.name}.`, data: { taskId: context.taskId } };
   }
   if (group === 'task') {
@@ -99,25 +101,25 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
       if (!title) throw new CliError('Give the task a --title.');
       const assignee = named.assignee ? findMember(state, named.assignee) : null;
       const taskId = crypto.randomUUID();
-      await api.send(null, { type: 'create-task', taskId, title, description: named.description ?? '', assigneeId: assignee?.id ?? null });
+      await send(null, { type: 'create-task', taskId, title, description: named.description ?? '', assigneeId: assignee?.id ?? null });
       return { text: `Created ${shortId(taskId)} "${title}" as ${me.name}${assignee ? `, assigned to ${assignee.name}` : ''}.`, data: { taskId } };
     }
     if (verb === 'assign') {
       const task = findTask(state, positional[0]);
       const assignee = findMember(state, positional[1]);
-      await api.send(task.id, { type: 'assign-task', assigneeId: assignee.id } as CommandInput);
+      await send(task.id, { type: 'assign-task', assigneeId: assignee.id } as CommandInput);
       return { text: `Assigned "${task.title}" to ${assignee.name}.`, data: { taskId: task.id, assigneeId: assignee.id } };
     }
     if (verb === 'claim') {
       const task = findTask(state, positional[0]);
-      await api.send(task.id, { type: 'claim-task' } as CommandInput);
+      await send(task.id, { type: 'claim-task' } as CommandInput);
       return { text: `Claimed "${task.title}".`, data: { taskId: task.id } };
     }
     if (verb === 'reply') {
       const task = findTask(state, positional[0]);
       const body = positional.slice(1).join(' ').trim();
       if (!body) throw new CliError('Write the reply after the task id.');
-      await api.send(null, { type: 'post-message', taskId: task.id, body });
+      await send(null, { type: 'post-message', taskId: task.id, body });
       return { text: `Replied on "${task.title}" as ${me.name}.`, data: { taskId: task.id } };
     }
   }

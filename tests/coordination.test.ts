@@ -313,3 +313,25 @@ test('terminal output is shared only after the session owner opts in, and viewer
   controller.abort();
   await api(host.url, sam.token, `/terminal/${taskId}/share`, { enabled: false });
 });
+
+test('work handed out through a tool is recorded as the person, marked with the tool, and remembers who assigned it', async () => {
+  const host = await workspace();
+  const sam = await teammate(host.url, host.token, 'contributor');
+  const send = (token: string, command: object) => api(host.url, token, '/commands', { id: randomUUID(), ...command });
+  const handedOut = randomUUID();
+  const selfMade = randomUUID();
+  expect((await send(host.token, { type: 'create-task', taskId: handedOut, title: 'Expired invite retry', description: '', assigneeId: sam.memberId, via: 'codex' })).status).toBe(200);
+  expect((await send(sam.token, { type: 'create-task', taskId: selfMade, title: 'Notes', description: '', assigneeId: null })).status).toBe(200);
+  expect((await send(host.token, { type: 'post-message', taskId: handedOut, body: 'Yes, 24 hours.', via: 'codex' })).status).toBe(200);
+  expect((await send(host.token, { type: 'post-message', body: 'Typed by hand.' })).status).toBe(200);
+  expect((await send(host.token, { type: 'post-message', body: 'Bad tool.', via: 'gpt' })).status).toBe(400);
+  const state = (await api(host.url, host.token, '/state')).data;
+  const alex = state.memberId;
+  expect(state.tasks.find((task: { id: string }) => task.id === handedOut)).toMatchObject({ authorId: alex, assignedBy: alex, via: 'codex' });
+  expect(state.tasks.find((task: { id: string }) => task.id === selfMade).assignedBy).toBeUndefined();
+  expect(state.messages.map((message: { body: string; via?: string }) => [message.body, message.via])).toEqual([['Yes, 24 hours.', 'codex'], ['Typed by hand.', undefined]]);
+  expect((await send(host.token, { type: 'assign-task', taskId: selfMade, revision: 1, assigneeId: sam.memberId })).status).toBe(200);
+  const reassigned = (await api(host.url, host.token, '/state')).data.tasks.find((task: { id: string }) => task.id === selfMade);
+  expect(reassigned).toMatchObject({ assignedBy: alex });
+  expect(reassigned.via).toBeUndefined();
+});

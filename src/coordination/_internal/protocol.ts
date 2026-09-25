@@ -9,6 +9,8 @@ export interface Task {
   id: string; title: string; description: string; authorId: string; assigneeId: string | null;
   status: 'unassigned' | 'awaiting_approval' | 'ready' | 'running' | 'submitted' | 'changes_requested' | 'accepted' | 'completed';
   revision: number; tool?: Tool; createdAt: string; package?: WorkPackage; draftPackage?: WorkPackage;
+  /** Who handed the task to its assignee, and the tool they acted through. */
+  assignedBy?: string; via?: Tool;
   pullRequestStatus?: PullRequestStatus; pendingDecisionIds?: string[];
 }
 export interface WorkPackage {
@@ -18,7 +20,7 @@ export interface WorkPackage {
 }
 export interface Message {
   id: string; taskId?: string; authorId: string; body: string; createdAt: string;
-  replyToId?: string; version?: number; editedAt?: string; deletedAt?: string;
+  replyToId?: string; version?: number; editedAt?: string; deletedAt?: string; via?: Tool;
 }
 export interface Decision {
   id: string; title: string; body: string; proposedBy: string; createdAt: string;
@@ -32,32 +34,34 @@ export interface Snapshot {
 }
 const identifier = z.string().uuid();
 const revision = z.number().int().positive();
+// `via` names the AI tool a person acted through (the CLI sets it); people's clicks never carry it.
+const commandBase = { id: identifier, via: toolSchema.optional() };
 export const commandSchema = z.discriminatedUnion('type', [
-  z.object({ id: identifier, type: z.literal('create-task'), taskId: identifier,
+  z.object({ ...commandBase, type: z.literal('create-task'), taskId: identifier,
     title: z.string().trim().min(1).max(160), description: z.string().max(32000), assigneeId: identifier.nullable() }),
-  z.object({ id: identifier, type: z.literal('approve-task'), taskId: identifier, revision }),
-  z.object({ id: identifier, type: z.literal('claim-task'), taskId: identifier, revision }),
-  z.object({ id: identifier, type: z.literal('assign-task'), taskId: identifier, revision, assigneeId: identifier }),
-  z.object({ id: identifier, type: z.literal('start-task'), taskId: identifier, revision, tool: toolSchema }),
-  z.object({ id: identifier, type: z.literal('save-package'), taskId: identifier, revision,
+  z.object({ ...commandBase, type: z.literal('approve-task'), taskId: identifier, revision }),
+  z.object({ ...commandBase, type: z.literal('claim-task'), taskId: identifier, revision }),
+  z.object({ ...commandBase, type: z.literal('assign-task'), taskId: identifier, revision, assigneeId: identifier }),
+  z.object({ ...commandBase, type: z.literal('start-task'), taskId: identifier, revision, tool: toolSchema }),
+  z.object({ ...commandBase, type: z.literal('save-package'), taskId: identifier, revision,
     summary: z.string().trim().min(1).max(8000), sourceRef: z.string().trim().min(1).max(1000),
     pullRequestUrl: z.string().url().refine(value => new URL(value).protocol === 'https:' && /\/pull\/\d+\/?$/.test(new URL(value).pathname)).optional(),
     deliverables: z.array(z.string().trim().min(1).max(2000)).max(100),
     verification: z.string().max(8000), questions: z.string().max(8000) }),
-  z.object({ id: identifier, type: z.literal('submit-package'), taskId: identifier, revision }),
-  z.object({ id: identifier, type: z.literal('accept-package'), taskId: identifier, revision }),
-  z.object({ id: identifier, type: z.literal('request-changes'), taskId: identifier, revision, note: z.string().trim().min(1).max(8000) }),
-  z.object({ id: identifier, type: z.literal('post-message'), taskId: identifier.optional(),
+  z.object({ ...commandBase, type: z.literal('submit-package'), taskId: identifier, revision }),
+  z.object({ ...commandBase, type: z.literal('accept-package'), taskId: identifier, revision }),
+  z.object({ ...commandBase, type: z.literal('request-changes'), taskId: identifier, revision, note: z.string().trim().min(1).max(8000) }),
+  z.object({ ...commandBase, type: z.literal('post-message'), taskId: identifier.optional(),
     replyToId: identifier.optional(), body: z.string().trim().min(1).max(8000) }),
-  z.object({ id: identifier, type: z.literal('edit-message'), messageId: identifier,
+  z.object({ ...commandBase, type: z.literal('edit-message'), messageId: identifier,
     version: revision, body: z.string().trim().min(1).max(8000) }),
-  z.object({ id: identifier, type: z.literal('unsend-message'), messageId: identifier, version: revision }),
-  z.object({ id: identifier, type: z.literal('propose-decision'), decisionId: identifier,
+  z.object({ ...commandBase, type: z.literal('unsend-message'), messageId: identifier, version: revision }),
+  z.object({ ...commandBase, type: z.literal('propose-decision'), decisionId: identifier,
     title: z.string().trim().min(1).max(160).regex(/^[^\r\n]+$/), body: z.string().trim().min(1).max(32000),
     supersedesId: identifier.optional(), affectedTaskIds: z.array(identifier).max(100).optional() }),
-  z.object({ id: identifier, type: z.literal('approve-decision'), decisionId: identifier,
+  z.object({ ...commandBase, type: z.literal('approve-decision'), decisionId: identifier,
     commitSha: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i) }),
-  z.object({ id: identifier, type: z.literal('acknowledge-decision'), taskId: identifier, revision, decisionId: identifier }),
+  z.object({ ...commandBase, type: z.literal('acknowledge-decision'), taskId: identifier, revision, decisionId: identifier }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandInput = Command extends infer C ? C extends Command ? Omit<C, 'id'> : never : never;

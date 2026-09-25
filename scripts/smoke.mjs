@@ -309,10 +309,10 @@ try {
   await press('Escape');
   if (await evaluate("Boolean(document.querySelector('.palette'))")) throw new Error('Escape did not close the palette.');
   // console-connect through the generated shim, the way a terminal or AI tool runs it.
-  const cli = (args, pipe = cliPipe) => new Promise(resolve => execFile(join(directory, 'bin', process.platform === 'win32' ? 'console-connect.cmd' : 'console-connect'),
+  const cli = (args, pipe = cliPipe, tool) => new Promise(resolve => execFile(join(directory, 'bin', process.platform === 'win32' ? 'console-connect.cmd' : 'console-connect'),
     // cmd joins arguments as typed, so quote the ones with spaces the way a person would.
     process.platform === 'win32' ? args.map(arg => /\s/.test(arg) ? `"${arg}"` : arg) : args,
-    { shell: process.platform === 'win32', env: { ...process.env, CONSOLE_CONNECT_PIPE: pipe } }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr })));
+    { shell: process.platform === 'win32', env: { ...process.env, CONSOLE_CONNECT_PIPE: pipe, ...(tool ? { CONSOLE_CONNECT_TOOL: tool } : {}) } }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr })));
   const listed = await cli(['task', 'list', '--json']);
   if (listed.code !== 0 || !JSON.parse(listed.stdout).tasks.some(task => task.title === 'Review login')) throw new Error(`console-connect task list failed: ${JSON.stringify(listed)}`);
   const created = await cli(['task', 'create', '--title', 'From the CLI', '--description', 'Made by console-connect']);
@@ -322,6 +322,11 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if (!(await evaluate("document.querySelector('.task-list')?.innerText.includes('From the CLI')"))) throw new Error(`A task created through console-connect did not appear in the app: ${JSON.stringify({ created, onHost: (await hostCall('/state')).tasks.map(task => task.title), notice: await evaluate("document.querySelector('.notice')?.innerText ?? null"), view: await evaluate("document.querySelector('.task-list')?.innerText.slice(0, 300) ?? 'no list'") })}`);
+  const cliTask = (await hostCall('/state')).tasks.find(task => task.title === 'From the CLI');
+  const replied = await cli(['task', 'reply', cliTask.id.slice(0, 8), 'Picked up by Codex.'], cliPipe, 'codex');
+  if (replied.code !== 0 || (await hostCall('/state')).messages.find(message => message.body === 'Picked up by Codex.')?.via !== 'codex') {
+    throw new Error(`A reply from a Codex console was not marked via Codex: ${JSON.stringify(replied)}`);
+  }
   const closed = await cli(['brief'], process.platform === 'win32' ? '\\\\.\\pipe\\cc-smoke-closed' : join(directory, 'closed.sock'));
   if (closed.code !== 2 || !closed.stderr.includes('Open Console Connect')) throw new Error(`console-connect without the app should exit 2: ${JSON.stringify(closed)}`);
   const taskId = crypto.randomUUID();

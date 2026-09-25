@@ -37,7 +37,8 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
     if (command.assigneeId && !state.members.some(member => member.id === command.assigneeId)) throw new RequestError(400, 'Choose a workspace member.');
     state.tasks.push({ id: command.taskId, title: command.title, description: command.description,
       authorId: actor.id, assigneeId: command.assigneeId, status: command.assigneeId ? 'awaiting_approval' : 'unassigned',
-      revision: 1, createdAt: new Date().toISOString() });
+      revision: 1, createdAt: new Date().toISOString(),
+      ...(command.assigneeId ? { assignedBy: actor.id, via: command.via } : {}) });
     return;
   }
   if (command.type === 'post-message') {
@@ -47,7 +48,7 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
       if (!parent || parent.deletedAt || parent.taskId !== command.taskId) throw new RequestError(400, 'Reply to a visible message in this conversation.');
     }
     state.messages.push({ id: command.id, taskId: command.taskId, authorId: actor.id,
-      replyToId: command.replyToId, body: command.body, createdAt: new Date().toISOString(), version: 1 });
+      replyToId: command.replyToId, body: command.body, createdAt: new Date().toISOString(), version: 1, via: command.via });
     return;
   }
   if (command.type === 'edit-message' || command.type === 'unsend-message') {
@@ -76,6 +77,8 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
       if (!state.members.some(member => member.id === command.assigneeId)) throw new RequestError(400, 'Choose a workspace member.');
       task.assigneeId = command.assigneeId;
       task.status = command.assigneeId === actor.id ? 'ready' : 'awaiting_approval';
+      task.assignedBy = actor.id;
+      task.via = command.via;
     }
     task.revision += 1;
     return;

@@ -1,6 +1,6 @@
 import { loadTheme, selectTheme, themes, type ThemeId } from './themes';
 import type { Message, Snapshot, Task } from './coordination';
-import { commandSchema } from './coordination/_internal/protocol';
+import { commandSchema, toolSchema } from './coordination/_internal/protocol';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { flushPending, loadPending, savePending } from './offline';
@@ -444,11 +444,20 @@ function decisionStep(decisionId: string, owner: boolean) {
 // Statuses and roles are stored as identifiers (awaiting_approval, owner) and shown in sentence case.
 const sentenceCase = (value: string) => { const text = value.replaceAll('_', ' '); return text.charAt(0).toUpperCase() + text.slice(1); };
 
+const viaLabel = (tool: string) => `via ${escape(toolNames[tool] ?? tool)}`;
+
+// "Assigned by Blair via Codex" when someone other than the assignee handed the task out.
+function assignedByLine(task: Task) {
+  if (!task.assignedBy || task.assignedBy === task.assigneeId) return '';
+  const name = snapshot?.members.find(member => member.id === task.assignedBy)?.name ?? 'a teammate';
+  return `<span aria-hidden="true">·</span><span>Assigned by ${escape(name)}${task.via ? ` ${viaLabel(task.via)}` : ''}</span>`;
+}
+
 function taskBody(task: Task) {
   const assignee = snapshot!.members.find(member => member.id === task.assigneeId);
   const tabs: TaskTab[] = ['overview', 'console', 'package', 'discussion'];
   const packageSummary = task.package ? `<section class="package-summary"><span class="section-label">Work package</span><h2>${escape(task.package.summary)}</h2><p>${escape(task.package.deliverables.join(', '))}</p><p><strong>Verification:</strong> ${escape(task.package.verification)}</p>${task.package.reviewNote ? `<p><strong>Review:</strong> ${escape(task.package.reviewNote)}</p>` : ''}</section>` : '';
-  return `<h1>${escape(task.title)}</h1><div class="meta"><span class="status-pill status-pill-${task.status}"><i class="status-dot status-${task.status}" aria-hidden="true"></i>${escape(sentenceCase(task.status))}</span>${assignee ? `<span class="meta-person"><span class="avatar" aria-hidden="true">${escape(assignee.name.slice(0, 1).toUpperCase())}</span>${escape(assignee.name)}</span><span aria-hidden="true">·</span>` : ''}<span>Revision ${task.revision}</span></div><nav class="task-tabs" aria-label="Task sections">${tabs.map(tab => `<button class="task-tab ${taskTab === tab ? 'active' : ''}" data-action="task-tab" data-tab="${tab}" title="${tab.charAt(0).toUpperCase() + tab.slice(1)} (${tabs.indexOf(tab) + 1})" aria-current="${taskTab === tab ? 'page' : 'false'}">${tab.charAt(0).toUpperCase() + tab.slice(1)}</button>`).join('')}</nav><div class="task-tab-content">${taskTab === 'overview' ? `<p class="description">${escape(task.description)}</p>${['unassigned', 'awaiting_approval', 'ready'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : ''}` : ''}${taskTab === 'package' ? `${packageSummary}${['running', 'changes_requested', 'submitted'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : !task.package ? '<p class="description">No work package yet.</p>' : ''}` : ''}</div>`;
+  return `<h1>${escape(task.title)}</h1><div class="meta"><span class="status-pill status-pill-${task.status}"><i class="status-dot status-${task.status}" aria-hidden="true"></i>${escape(sentenceCase(task.status))}</span>${assignee ? `<span class="meta-person"><span class="avatar" aria-hidden="true">${escape(assignee.name.slice(0, 1).toUpperCase())}</span>${escape(assignee.name)}</span><span aria-hidden="true">·</span>` : ''}<span>Revision ${task.revision}</span>${assignedByLine(task)}</div><nav class="task-tabs" aria-label="Task sections">${tabs.map(tab => `<button class="task-tab ${taskTab === tab ? 'active' : ''}" data-action="task-tab" data-tab="${tab}" title="${tab.charAt(0).toUpperCase() + tab.slice(1)} (${tabs.indexOf(tab) + 1})" aria-current="${taskTab === tab ? 'page' : 'false'}">${tab.charAt(0).toUpperCase() + tab.slice(1)}</button>`).join('')}</nav><div class="task-tab-content">${taskTab === 'overview' ? `<p class="description">${escape(task.description)}</p>${['unassigned', 'awaiting_approval', 'ready'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : ''}` : ''}${taskTab === 'package' ? `${packageSummary}${['running', 'changes_requested', 'submitted'].includes(task.status) ? `<section class="action-panel">${taskActions(task)}</section>` : !task.package ? '<p class="description">No work package yet.</p>' : ''}` : ''}</div>`;
 }
 
 const toolNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', antigravity: 'Antigravity' };
@@ -539,7 +548,7 @@ function chatMessageMarkup(message: Message, messages: Message[], group: { conti
     : `<div class="chat-bubble ${message.deletedAt ? 'chat-bubble-unsent' : ''}">${quote}${message.deletedAt ? 'Message unsent' : escape(message.body)}${message.editedAt && !message.deletedAt ? '<small>Edited</small>' : ''}</div>`;
   const avatar = mine ? '' : group.last ? `<span class="chat-avatar" aria-hidden="true">${escape(author.slice(0, 1).toUpperCase())}</span>` : '<span class="chat-avatar chat-avatar-spacer" aria-hidden="true"></span>';
   const meta = group.continued ? `<div class="sr-only">${escape(mine ? 'You' : author)} · ${escape(time)}</div>`
-    : `<div class="chat-message-meta">${mine ? '<span class="sr-only">You · </span>' : `${escape(author)} · `}${escape(time)}</div>`;
+    : `<div class="chat-message-meta">${mine ? '<span class="sr-only">You · </span>' : `${escape(author)} · `}${escape(time)}${message.via ? ` · ${viaLabel(message.via)}` : ''}</div>`;
   return `<article class="chat-message ${mine ? 'chat-message-own' : ''} ${group.continued ? 'chat-message-continued' : ''}" data-message-id="${escape(message.id)}">${avatar}<div class="chat-message-main">${meta}${content}${actions}</div></article>`;
 }
 
@@ -675,7 +684,7 @@ function render() {
     }
     if (taskTab === 'discussion') {
       const messages = snapshot.messages.filter(message => message.taskId === selected.id);
-      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="discussion"><span class="section-label">Discussion</span>${messages.map(message => `<div class="message"><strong>${escape(snapshot!.members.find(member => member.id === message.authorId)?.name)}</strong><p>${escape(message.body)}</p></div>`).join('') || '<p>No messages yet.</p>'}<form id="message"><label>Message<textarea name="body" required></textarea></label><button type="submit">Post message</button></form></section>`);
+      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="discussion"><span class="section-label">Discussion</span>${messages.map(message => `<div class="message"><strong>${escape(snapshot!.members.find(member => member.id === message.authorId)?.name)}</strong>${message.via ? ` <small class="via-marker">${viaLabel(message.via)}</small>` : ''}<p>${escape(message.body)}</p></div>`).join('') || '<p>No messages yet.</p>'}<form id="message"><label>Message<textarea name="body" required></textarea></label><button type="submit">Post message</button></form></section>`);
     }
   }
   if (notice && loadPending(localStorage).some(item => item.workspaceId === snapshot!.workspace.id && item.memberId === snapshot!.memberId)) {
@@ -1171,7 +1180,8 @@ const cliWorkspace: WorkspaceApi = {
 };
 window.consoleConnect.onCliRequest(async request => {
   try {
-    const result = await runCliCommand(request.argv, { cwd: request.cwd, taskId: request.taskId }, cliWorkspace);
+    const tool = toolSchema.safeParse(request.tool);
+    const result = await runCliCommand(request.argv, { cwd: request.cwd, taskId: request.taskId, tool: tool.success ? tool.data : undefined }, cliWorkspace);
     window.consoleConnect.replyToCli({ id: request.id, reply: { ok: true, ...result } });
   } catch (error) {
     window.consoleConnect.replyToCli({ id: request.id, reply: { ok: false, error: (error as Error).message } });
