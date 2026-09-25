@@ -12,7 +12,7 @@ import { officeRooms, type OfficeCard } from './office';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { consoleReadiness, glimpse, needsInput } from './console-state';
-import { defaultAutoSettings, sizeNames, stageNames, detectEvents, detectWorkerEvents, knowledgeFlags, mapLines, parseProjectMap, protectedChanges, type MapGroup, eventLine, planAutoRun, runCliCommand, taskBrief, workerLine, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkerEvent, type WorkspaceApi } from './orchestrator';
+import { defaultAutoSettings, recommendNext, sizeNames, stageNames, suggestSize, detectEvents, detectWorkerEvents, knowledgeFlags, mapLines, parseProjectMap, protectedChanges, type MapGroup, eventLine, planAutoRun, runCliCommand, taskBrief, workerLine, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkerEvent, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -995,7 +995,11 @@ function ideaCardMarkup(idea: Idea) {
     const last = ideaPaths[idea.size].at(-1) === idea.stage;
     const hint = idea.stage === 'build' ? 'Work the linked tasks through their consoles.' : `Run <code>console-connect playbook ${idea.stage} ${short}</code> in the orchestrator.`;
     const ready = idea.stage === 'talk' && idea.readyBy ? ` Marked ready by ${escape(person(idea.readyBy))}.` : '';
-    next = `<p class="idea-next-line"><strong>${escape(stageNames[idea.stage])}</strong> ${hint}${ready}</p>${gate ? `<p class="idea-gate">${escape(gate)}</p>` : ''}`;
+    const then = recommendNext(idea);
+    const resize = suggestSize(idea);
+    next = `<p class="idea-next-line"><strong>${escape(stageNames[idea.stage])}</strong> ${hint}${ready}</p>${gate ? `<p class="idea-gate">${escape(gate)}</p>` : ''}`
+      + `${then ? `<p class="idea-then">Then: ${escape(then.text)}</p>` : ''}`
+      + `${resize ? `<p class="idea-resize">${escape(resize.text)} <button class="text-button inline-link" data-action="resize-idea" data-idea="${idea.id}" data-size="${resize.size}">Make it a ${escape(sizeNames[resize.size])}</button></p>` : ''}`;
     if (skippingIdeaId === idea.id) {
       actions = `<form id="skip-idea" class="idea-skip-form" data-idea="${idea.id}"><label>Why skip ${escape(stageNames[idea.stage])}?<input name="reason" maxlength="200" required value="${escape(skipDraft)}" placeholder="One line, for example: small fix, no spec"></label><div class="actions"><button type="submit" class="secondary">Skip stage</button><button type="button" class="text-button" data-action="cancel-skip-idea">Cancel</button></div></form>`;
     } else {
@@ -1780,6 +1784,7 @@ app.addEventListener('click', async event => {
     if (action === 'cancel-skip-idea') { skippingIdeaId = null; render(); return; }
     const idea = button.dataset.idea ? snapshot?.ideas?.find(item => item.id === button.dataset.idea) : undefined;
     if (idea && (action === 'mark-idea-ready' || action === 'advance-idea')) { await command(null, { type: action, ideaId: idea.id, revision: idea.revision }); return; }
+    if (idea && action === 'resize-idea') { await command(null, { type: 'update-idea', ideaId: idea.id, revision: idea.revision, size: button.dataset.size }); return; }
     if (idea && action === 'delete-idea') { await command(null, { type: 'delete-idea', ideaId: idea.id }); return; }
     if (action === 'office-watch') {
       selectedTaskId = button.dataset.task!; taskTab = 'console'; showOffice = false; showIdeas = false; render();

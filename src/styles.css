@@ -475,3 +475,5 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .idea-size-tile b{font-size:13px}
 .idea-size-tile small{margin:0;font-weight:400}
 .idea-preview{margin-top:10px}
+.idea-then{margin:0;font-size:12px;color:var(--color-muted)}
+.idea-resize{margin:0;font-size:12px;color:var(--color-warning)}
