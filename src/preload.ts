@@ -32,7 +32,7 @@ contextBridge.exposeInMainWorld('consoleConnect', {
   worktreeChanges: (input: { taskId: string }) => ipcRenderer.invoke('worktree-changes', input),
   worktreeFacts: (input: { taskId: string }) => ipcRenderer.invoke('worktree-facts', input),
   cliFolder: () => ipcRenderer.invoke('cli-folder'),
-  onCliRequest: (callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; taskId: string | null }) => void) =>
+  onCliRequest: (callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; console?: string; taskId: string | null }) => void) =>
     ipcRenderer.on('cli-request', (_event, value) => callback(value)),
   replyToCli: (value: { id: string; reply: { ok: true; text: string; data: unknown } | { ok: false; error: string } }) => ipcRenderer.send('cli-reply', value),
   onTerminalData: (callback: (event: { taskId: string; data: string }) => void) => ipcRenderer.on('terminal-data', (_event, value) => callback(value)),

@@ -3,7 +3,8 @@ import { join } from 'node:path';
 
 export const cliProtocolVersion = 1;
 
-export interface CliRequest { version: typeof cliProtocolVersion; argv: string[]; cwd: string; tool?: string }
+// `console` is set by the app's own consoles ("orchestrator"), so automatic runs can hold hand-outs.
+export interface CliRequest { version: typeof cliProtocolVersion; argv: string[]; cwd: string; tool?: string; console?: string }
 export type CliReply = { ok: true; text: string; data: unknown } | { ok: false; error: string };
 
 // One endpoint per signed-in user. CONSOLE_CONNECT_PIPE overrides it so tests and smoke runs

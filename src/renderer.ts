@@ -9,7 +9,7 @@ import { invitationLink, parseInvitationLink } from './invitations';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { consoleReadiness, needsInput } from './console-state';
-import { detectEvents, eventLine, runCliCommand, taskBrief, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkspaceApi } from './orchestrator';
+import { defaultAutoSettings, detectEvents, eventLine, planAutoRun, runCliCommand, taskBrief, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -45,7 +45,7 @@ declare global {
       worktreeChanges(input: { taskId: string }): Promise<Array<{ path: string; added: number | null; removed: number | null }>>;
       worktreeFacts(input: { taskId: string }): Promise<{ branch: string; commit: string; files: Array<{ path: string; added: number | null; removed: number | null }>; pullRequestUrl?: string }>;
       cliFolder(): Promise<string>;
-      onCliRequest(callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; taskId: string | null }) => void): void;
+      onCliRequest(callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; console?: string; taskId: string | null }) => void): void;
       replyToCli(value: { id: string; reply: { ok: true; text: string; data: unknown } | { ok: false; error: string } }): void;
       onTerminalData(callback: (event: { taskId: string; data: string }) => void): void;
       onTerminalExit(callback: (event: { taskId: string; exitCode: number }) => void): void;
@@ -105,13 +105,50 @@ function queueOrchestratorEvents(events: OrchestratorEvent[]) {
   orchestratorEvents = [...orchestratorEvents, ...events].slice(-orchestratorEventLimit);
 }
 
+// Automatic handling (orchestrator ADR Q9): settings and today's count live on this computer; Pause lasts until restart.
+const autoSettingsKey = 'console-connect.orchestrator-auto';
+const autoUsageKey = 'console-connect.orchestrator-auto-usage';
+let autoPaused = false;
+let autoRunStartedAt = 0;
+let heldAssignments: Array<{ id: string; argv: string[]; summary: string }> = [];
+const today = () => new Date().toISOString().slice(0, 10);
+
+function loadAutoSettings(): AutoSettings {
+  try { return { ...defaultAutoSettings, ...JSON.parse(localStorage.getItem(autoSettingsKey) ?? '{}') }; } catch { return defaultAutoSettings; }
+}
+function loadAutoUsage(): AutoUsage {
+  try { const usage = JSON.parse(localStorage.getItem(autoUsageKey) ?? 'null') as AutoUsage | null; return usage?.date === today() ? usage : { date: today(), count: 0 }; }
+  catch { return { date: today(), count: 0 }; }
+}
+
+function orchestratorReadiness() {
+  return orchestrator ? consoleReadiness({ tool: orchestrator.tool, output: orchestrator.output, lastOutputAt: orchestrator.lastOutputAt, now: Date.now() }) : 'working';
+}
+
+// An automatic run lasts from its Enter until the tool has answered and is ready again.
+function autoRunActive() {
+  if (!autoRunStartedAt || !orchestrator?.active) return false;
+  if (orchestrator.lastOutputAt > autoRunStartedAt && orchestratorReadiness() === 'ready') { autoRunStartedAt = 0; render(); return false; }
+  return true;
+}
+
 function typeOrchestratorEvents() {
   if (!orchestrator?.active || !orchestratorEvents.length || orchestrator.workspaceId !== snapshot?.workspace.id) return;
-  if (orchestratorTypedAt > orchestratorLastInputAt) return;
-  if (consoleReadiness({ tool: orchestrator.tool, output: orchestrator.output, lastOutputAt: orchestrator.lastOutputAt, now: Date.now() }) !== 'ready') return;
-  window.consoleConnect.terminalWrite({ taskId: orchestratorKey, data: eventLine(orchestratorEvents) });
-  orchestratorEvents = [];
-  orchestratorTypedAt = Date.now();
+  if (autoRunActive() || orchestratorTypedAt > orchestratorLastInputAt || orchestratorReadiness() !== 'ready') return;
+  const plan = planAutoRun(orchestratorEvents, loadAutoSettings(), loadAutoUsage(), autoPaused, today());
+  if (plan.auto.length) {
+    window.consoleConnect.terminalWrite({ taskId: orchestratorKey, data: `${eventLine(plan.auto)}\r` });
+    const usage = loadAutoUsage();
+    localStorage.setItem(autoUsageKey, JSON.stringify({ date: today(), count: usage.count + 1 }));
+    autoRunStartedAt = Date.now();
+    orchestratorEvents = plan.ask;
+    cliActivity.unshift({ at: Date.now(), text: `Auto: ${eventLine(plan.auto).slice(0, 120)}`, tool: orchestrator.tool });
+    cliActivity.length = Math.min(cliActivity.length, cliActivityLimit);
+  } else {
+    window.consoleConnect.terminalWrite({ taskId: orchestratorKey, data: eventLine(plan.ask) });
+    orchestratorEvents = [];
+    orchestratorTypedAt = Date.now();
+  }
   render();
 }
 
@@ -395,7 +432,7 @@ function renderSettings() {
   const theme = loadTheme();
   app.innerHTML = `<main class="settings-page"><header class="dashboard-header"><div class="brand">CONSOLE <b>CONNECT</b></div><button class="text-button" data-action="settings-back">Back</button></header><div class="settings-body"><h1>Settings</h1><section class="settings-section"><h2>Appearance</h2><p class="description">Choose the color theme for this computer.</p><label>Theme<select id="theme">${themes.map(item => `<option value="${item.id}" ${item.id === theme.id ? 'selected' : ''}>${escape(item.name)}</option>`).join('')}</select></label><label class="chat-setting-check"><input id="press-sound" type="checkbox" ${pressSoundEnabled() ? 'checked' : ''}>Play a soft click when pressing buttons</label></section><section class="settings-section"><h2>Supabase connection</h2><p class="description">These defaults fill the forms when you add or join a hosted project. Existing projects keep their own connection.</p><form id="supabase-settings"><label>Project URL<input name="projectUrl" type="url" placeholder="https://your-project.supabase.co" value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" value="${escape(supabaseDefaults.publishableKey)}"></label><button type="submit">Save connection defaults</button></form></section>${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main>`;
   document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', '<section class="settings-section"><h2>Account</h2><p class="description">Connect a GitHub or Google account to keep access to hosted projects across computers. Existing projects stay linked to your current identity.</p><div class="oauth-actions"><button class="secondary" data-action="sign-in-github">Connect GitHub</button><button class="secondary" data-action="sign-in-google">Connect Google</button></div></section>');
-  document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', `<section class="settings-section"><h2>Command line</h2><p>Use <code>console-connect</code> from any terminal or AI tool while this app is open. Consoles inside the app already have it. For other terminals, add this folder to your PATH.</p><div class="cli-folder"><input readonly aria-label="console-connect folder" value="${escape(cliFolderPath)}"><button class="secondary" data-action="copy-cli-folder">Copy folder</button></div></section><section class="settings-section"><h2>Team chat notifications</h2><p class="description">Unread messages still appear in the app when desktop notifications are muted.</p><label class="chat-setting-check"><input id="chat-notifications-enabled" type="checkbox" ${chatNotifications.enabled ? 'checked' : ''}>Show desktop notifications when the app is in the background</label><label class="chat-setting-check"><input id="chat-notifications-preview" type="checkbox" ${chatNotifications.showPreview ? 'checked' : ''}>Include message text in desktop notifications</label></section>`);
+  document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', `<section class="settings-section"><h2>Orchestrator</h2><p>How your orchestrator console hears about team updates. They are typed in for you to send, unless you let it handle some automatically. Automatic runs use your AI tool's usage, and approvals still wait for your click.</p>${autoSettingsMarkup()}</section><section class="settings-section"><h2>Command line</h2><p>Use <code>console-connect</code> from any terminal or AI tool while this app is open. Consoles inside the app already have it. For other terminals, add this folder to your PATH.</p><div class="cli-folder"><input readonly aria-label="console-connect folder" value="${escape(cliFolderPath)}"><button class="secondary" data-action="copy-cli-folder">Copy folder</button></div></section><section class="settings-section"><h2>Team chat notifications</h2><p class="description">Unread messages still appear in the app when desktop notifications are muted.</p><label class="chat-setting-check"><input id="chat-notifications-enabled" type="checkbox" ${chatNotifications.enabled ? 'checked' : ''}>Show desktop notifications when the app is in the background</label><label class="chat-setting-check"><input id="chat-notifications-preview" type="checkbox" ${chatNotifications.showPreview ? 'checked' : ''}>Include message text in desktop notifications</label></section>`);
 }
 
 async function request(path: string, body?: unknown, target = connection) {
@@ -698,10 +735,22 @@ function orchestratorMarkup() {
   const session = orchestrator?.workspaceId === snapshot?.workspace.id ? orchestrator : null;
   const tools = Object.entries(toolNames).map(([id, name]) => `<option value="${id}" ${id === (session?.tool ?? 'codex') ? 'selected' : ''}>${name}</option>`).join('');
   const launch = session?.active ? '' : `<div class="console-launch"><select id="orchestrator-tool" aria-label="Choose tool">${tools}</select><button data-action="start-orchestrator">${session ? 'New console' : 'Open orchestrator'}</button></div>`;
-  const strip = `<div class="session-strip">${session ? `<span class="session-tool">${escape(toolNames[session.tool] ?? session.tool)}</span><span class="session-place" title="${escape(session.directory)}">Main folder · no worktree</span><span class="session-elapsed">${elapsedFrom(session.startedAt, session.active ? Date.now() : session.endedAt)}</span>` : ''}<span class="session-state">${session ? session.active ? 'Session running' : 'Session ended' : 'No console'}</span><span class="session-spacer"></span>${session?.active ? '<button class="text-button session-stop" data-action="stop-orchestrator">Stop</button>' : ''}${launch}</div>`;
+  const strip = `<div class="session-strip">${session ? `<span class="session-tool">${escape(toolNames[session.tool] ?? session.tool)}</span><span class="session-place" title="${escape(session.directory)}">Main folder · no worktree</span><span class="session-elapsed">${elapsedFrom(session.startedAt, session.active ? Date.now() : session.endedAt)}</span>` : ''}<span class="session-state">${session ? session.active ? 'Session running' : 'Session ended' : 'No console'}</span><span class="session-spacer"></span>${autoBadgeMarkup()}${session?.active ? '<button class="text-button session-stop" data-action="stop-orchestrator">Stop</button>' : ''}${launch}</div>`;
   const body = session ? '<div id="orchestrator-terminal" aria-label="Orchestrator console output"></div>'
     : '<div class="console-empty"><p>Run Codex, Antigravity, or Claude Code in your main project folder, with console-connect ready. It plans, hands out, and follows work as you. Accepting work and approving decisions still need your click.</p></div>';
   return `<h1>Orchestrator</h1><div class="meta"><span>Acts as ${escape(snapshot!.members.find(member => member.id === snapshot!.memberId)?.name ?? 'you')}</span><span aria-hidden="true">·</span><span>Main project folder</span></div><div class="task-tab-content"><section class="console-workspace">${strip}${body}</section></div>`;
+}
+
+function autoBadgeMarkup() {
+  const settings = loadAutoSettings();
+  if (!settings.enabled) return '';
+  return `<span class="auto-badge${autoPaused ? ' auto-paused' : ''}">${autoPaused ? 'Auto paused' : 'Auto'} · ${loadAutoUsage().count} of ${settings.dailyLimit} today</span><button class="text-button" data-action="toggle-auto-pause">${autoPaused ? 'Resume' : 'Pause'}</button>`;
+}
+
+function autoSettingsMarkup() {
+  const settings = loadAutoSettings();
+  const choice = (key: 'questions' | 'stalls' | 'submissions', label: string, hint: string) => `<label class="auto-choice"><span>${label}<small>${hint}</small></span><select data-auto="${key}" ${settings.enabled ? '' : 'disabled'}><option value="ask" ${settings[key] === 'ask' ? 'selected' : ''}>Ask me</option><option value="auto" ${settings[key] === 'auto' ? 'selected' : ''}>Auto</option></select></label>`;
+  return `<label class="chat-setting-check"><input type="checkbox" data-auto="enabled" ${settings.enabled ? 'checked' : ''}>Let the orchestrator handle updates automatically</label><div class="auto-settings">${choice('questions', 'A teammate\'s AI asks a question', 'The orchestrator answers in the task discussion as you.')}${choice('stalls', 'A session gets stuck or ends without a package', 'The orchestrator suggests a next step to the owner.')}${choice('submissions', 'Work is submitted', 'The orchestrator reads the package and proposes a review; accepting waits for your click.')}<p class="auto-choice"><span>Assign follow-up work<small>New hand-outs from an automatic run are held for you to send.</small></span><strong>Always asks you</strong></p><label class="auto-choice"><span>Pause after this many automatic runs a day</span><input type="number" min="1" max="500" data-auto="dailyLimit" value="${settings.dailyLimit}" ${settings.enabled ? '' : 'disabled'}></label></div>`;
 }
 
 function orchestratorRailMarkup() {
@@ -709,7 +758,8 @@ function orchestratorRailMarkup() {
   const activity = cliActivity.length
     ? cliActivity.map(item => `<div class="activity-item"><span>${escape(item.text)}</span><small>${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(item.at)}${item.tool ? ` · ${viaLabel(item.tool)}` : ''}</small></div>`).join('')
     : '<p class="rail-meta">Nothing yet. Commands your tool runs through console-connect show here.</p>';
-  return `${handedOut || '<section class="assigned-by-me"><div class="section-head"><span class="section-label">Assigned by me</span></div><p class="rail-meta">Nothing handed out yet. Tasks you or your orchestrator assign show up here, grouped by where they stand.</p></section>'}<section class="cli-activity"><div class="section-head"><span class="section-label">CLI activity</span></div>${activity}</section>`;
+  const held = heldAssignments.length ? `<section class="held-work"><div class="section-head"><span class="section-label">Held for you</span></div><p class="rail-meta">Automatic runs never hand out work. Send these yourself.</p>${heldAssignments.map(item => `<div class="held-item"><span>${escape(item.summary)}</span><div><button class="text-button" data-action="discard-held" data-held="${item.id}">Discard</button><button class="secondary" data-action="send-held" data-held="${item.id}">Send</button></div></div>`).join('')}</section>` : '';
+  return `${held}${handedOut || '<section class="assigned-by-me"><div class="section-head"><span class="section-label">Assigned by me</span></div><p class="rail-meta">Nothing handed out yet. Tasks you or your orchestrator assign show up here, grouped by where they stand.</p></section>'}<section class="cli-activity"><div class="section-head"><span class="section-label">CLI activity</span></div>${activity}</section>`;
 }
 
 function mountOrchestratorTerminal() {
@@ -967,6 +1017,14 @@ app.addEventListener('change', event => {
   const target = event.target as HTMLElement;
   if (target.id === 'theme') { selectTheme((target as HTMLSelectElement).value as ThemeId); render(); }
   if (target.id === 'press-sound') setPressSound((target as HTMLInputElement).checked);
+  if (target.dataset.auto) {
+    const settings = loadAutoSettings();
+    const key = target.dataset.auto as keyof AutoSettings;
+    const input = target as HTMLInputElement;
+    const next = { ...settings, [key]: key === 'enabled' ? input.checked : key === 'dailyLimit' ? Math.max(1, Math.min(500, Number(input.value) || settings.dailyLimit)) : input.value };
+    localStorage.setItem(autoSettingsKey, JSON.stringify(next));
+    render();
+  }
   if (target.id === 'assigning-rule') {
     void command(null, { type: 'set-assigning-rule', rule: (target as HTMLSelectElement).value }).catch(error => { notice = (error as Error).message; render(); });
   }
@@ -1343,6 +1401,15 @@ app.addEventListener('click', async event => {
     }
     if (action === 'copy-invitation') { await window.consoleConnect.copyText(currentInvitationLink); notice = 'Invitation link copied.'; render(); return; }
     // Workspace-level actions: they work before any task exists.
+    if (action === 'toggle-auto-pause') { autoPaused = !autoPaused; render(); return; }
+    if (action === 'discard-held') { heldAssignments = heldAssignments.filter(item => item.id !== button.dataset.held); render(); return; }
+    if (action === 'send-held') {
+      const item = heldAssignments.find(entry => entry.id === button.dataset.held);
+      if (!item) return;
+      const result = await runCliCommand(item.argv, { cwd: '', taskId: null, tool: toolSchema.safeParse(orchestrator?.tool).data }, cliWorkspace);
+      heldAssignments = heldAssignments.filter(entry => entry.id !== item.id);
+      notice = result.text; render(); return;
+    }
     if (action === 'copy-cli-folder') { await window.consoleConnect.copyText(cliFolderPath); notice = 'Folder copied.'; render(); return; }
     if (action === 'open-orchestrator') {
       if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
@@ -1483,6 +1550,7 @@ const cliWorkspace: WorkspaceApi = {
     await command(task, fields);
   },
   propose: proposal => { reviewProposals.push(proposal); render(); },
+  hold: item => { heldAssignments.push({ id: crypto.randomUUID(), ...item }); render(); },
   draftPackage: saveDraftPackage,
 };
 
@@ -1516,7 +1584,8 @@ async function confirmProposal() {
 window.consoleConnect.onCliRequest(async request => {
   try {
     const tool = toolSchema.safeParse(request.tool);
-    const result = await runCliCommand(request.argv, { cwd: request.cwd, taskId: request.taskId, tool: tool.success ? tool.data : undefined }, cliWorkspace);
+    const result = await runCliCommand(request.argv, { cwd: request.cwd, taskId: request.taskId, tool: tool.success ? tool.data : undefined,
+      holdAssignments: request.console === 'orchestrator' && autoRunActive() }, cliWorkspace);
     window.consoleConnect.replyToCli({ id: request.id, reply: { ok: true, ...result } });
     cliActivity.unshift({ at: Date.now(), text: activityLabel(request.argv, result.text), tool: tool.success ? tool.data : undefined });
     cliActivity.length = Math.min(cliActivity.length, cliActivityLimit);

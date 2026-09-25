@@ -9,11 +9,14 @@ export interface WorkspaceApi {
   propose(proposal: ReviewProposal): void;
   /** Saves a private draft package: these words plus the Git facts the app reads from the task worktree. */
   draftPackage(draft: PackageDraft): Promise<void>;
+  /** Keeps a hand-out from an automatic run for the person to send or discard (orchestrator ADR Q9). */
+  hold(item: { argv: string[]; summary: string }): void;
 }
 export interface PackageDraft { taskId: string; summary: string; checks: string; questions: string; via?: Tool }
 export interface ReviewProposal { id: string; taskId: string; action: 'accept' | 'changes'; note: string; via?: Tool }
 // `tool` is the AI tool the caller runs in, when known; commands are marked with it ("via Codex").
-export interface CliContext { cwd: string; taskId: string | null; tool?: Tool }
+// `holdAssignments` is set while the orchestrator handles updates automatically: new hand-outs wait for the person.
+export interface CliContext { cwd: string; taskId: string | null; tool?: Tool; holdAssignments?: boolean }
 export interface CliResult { text: string; data: unknown }
 export class CliError extends Error {}
 
@@ -79,6 +82,10 @@ function brief(state: Snapshot, me: Member): CliResult {
 export async function runCliCommand(argv: string[], context: CliContext, api: WorkspaceApi): Promise<CliResult> {
   const state = api.snapshot();
   if (!state) throw new CliError('Open a project in Console Connect first.');
+  const hold = (summary: string): CliResult => {
+    api.hold({ argv, summary });
+    return { text: `Held for ${me.name} to send: ${summary}. Automatic runs never hand out work.`, data: { held: summary } };
+  };
   const send: WorkspaceApi['send'] = (taskId, fields) => api.send(taskId, context.tool ? { ...fields, via: context.tool } as CommandInput : fields);
   const me = state.members.find(member => member.id === state.memberId)!;
   const [group, verb, ...rest] = argv;
@@ -108,6 +115,7 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
       const title = named.title?.trim();
       if (!title) throw new CliError('Give the task a --title.');
       const assignee = named.assignee ? findMember(state, named.assignee) : null;
+      if (assignee && context.holdAssignments) return hold(`Create "${title}" for ${assignee.name}`);
       const taskId = crypto.randomUUID();
       await send(null, { type: 'create-task', taskId, title, description: named.description ?? '', assigneeId: assignee?.id ?? null });
       return { text: `Created ${shortId(taskId)} "${title}" as ${me.name}${assignee ? `, assigned to ${assignee.name}` : ''}.`, data: { taskId } };
@@ -115,6 +123,7 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
     if (verb === 'assign') {
       const task = findTask(state, positional[0]);
       const assignee = findMember(state, positional[1]);
+      if (context.holdAssignments) return hold(`Assign "${task.title}" to ${assignee.name}`);
       await send(task.id, { type: 'assign-task', assigneeId: assignee.id } as CommandInput);
       return { text: `Assigned "${task.title}" to ${assignee.name}.`, data: { taskId: task.id, assigneeId: assignee.id } };
     }

@@ -1,3 +1,5 @@
+export { defaultAutoSettings, planAutoRun } from './_internal/auto';
+export type { AutoChoice, AutoSettings, AutoUsage } from './_internal/auto';
 export { detectEvents, eventLine } from './_internal/events';
 export type { OrchestratorEvent } from './_internal/events';
 export { taskBrief } from './_internal/brief';

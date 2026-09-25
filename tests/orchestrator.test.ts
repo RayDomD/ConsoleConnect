@@ -21,9 +21,10 @@ function workspace() {
   const sent: Array<{ taskId: string | null; fields: CommandInput }> = [];
   const proposals: ReviewProposal[] = [];
   const drafts: PackageDraft[] = [];
+  const held: Array<{ argv: string[]; summary: string }> = [];
   const api: WorkspaceApi = { snapshot: () => state, send: async (taskId, fields) => { sent.push({ taskId, fields }); },
-    propose: proposal => { proposals.push(proposal); }, draftPackage: async draft => { drafts.push(draft); } };
-  return { api, sent, proposals, drafts, state };
+    propose: proposal => { proposals.push(proposal); }, draftPackage: async draft => { drafts.push(draft); }, hold: item => { held.push(item); } };
+  return { api, sent, proposals, drafts, held, state };
 }
 
 const context = { cwd: 'C:/work/demo', taskId: null };
@@ -118,6 +119,19 @@ describe('console-connect commands in the app', () => {
     await expect(runCliCommand(['package', 'draft', '--summary', 'x'], context, api)).rejects.toThrow('Run package draft in the task console, or add --task <id>.');
     state.memberId = blair;
     await expect(runCliCommand(['package', 'draft', '--summary', 'x'], inTask, api)).rejects.toThrow('Only the person working on this task can draft its package.');
+  });
+
+  test('during an automatic run, handing out work is held for the person to send', async () => {
+    const { api, sent, held } = workspace();
+    const auto = { ...context, tool: 'codex' as const, holdAssignments: true };
+    const created = await runCliCommand(['task', 'create', '--title', 'Follow-up', '--assignee', 'Sam'], auto, api);
+    await runCliCommand(['task', 'assign', 'aaaa', 'Sam'], auto, api);
+    expect(sent).toEqual([]);
+    expect(held.map(item => item.summary)).toEqual(['Create "Follow-up" for Sam', 'Assign "Review login" to Sam']);
+    expect(held[0]!.argv).toEqual(['task', 'create', '--title', 'Follow-up', '--assignee', 'Sam']);
+    expect(created.text).toBe('Held for Blair to send: Create "Follow-up" for Sam. Automatic runs never hand out work.');
+    await runCliCommand(['task', 'create', '--title', 'Notes'], auto, api);
+    expect(sent).toHaveLength(1);
   });
 });
 

@@ -26,7 +26,7 @@ async function main() {
   const json = process.argv.includes('--json');
   const argv = process.argv.slice(2).filter(item => item !== '--json');
   if (!argv.length || ['help', '--help', '-h'].includes(argv[0]!)) { console.log(usage); return 0; }
-  const reply = await sendCliRequest(pipePath(), { version: cliProtocolVersion, argv, cwd: process.cwd(), tool: process.env.CONSOLE_CONNECT_TOOL });
+  const reply = await sendCliRequest(pipePath(), { version: cliProtocolVersion, argv, cwd: process.cwd(), tool: process.env.CONSOLE_CONNECT_TOOL, console: process.env.CONSOLE_CONNECT_CONSOLE });
   if (!reply) { console.error('Open Console Connect to use console-connect.'); return 2; }
   if (!reply.ok) { if (json) console.log(JSON.stringify({ error: reply.error })); else console.error(reply.error); return 1; }
   console.log(json ? JSON.stringify(reply.data, null, 2) : reply.text);

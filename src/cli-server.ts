@@ -8,7 +8,7 @@ const maxRequestBytes = 1_000_000;
 const maxArguments = 64;
 const replyTimeoutMs = 60_000;
 
-export interface CliForward { id: string; argv: string[]; cwd: string; tool?: string; taskId: string | null }
+export interface CliForward { id: string; argv: string[]; cwd: string; tool?: string; console?: string; taskId: string | null }
 
 // A command run inside a task worktree (<userData>/worktrees/<taskId>/...) defaults to that task.
 export function taskIdForCwd(worktrees: string, cwd: string) {
@@ -38,11 +38,12 @@ export function startCliServer(options: { worktrees: string; target: () => WebCo
       const end = body.indexOf('\n');
       if (end < 0) return;
       handled = true;
-      let request: { version?: unknown; argv?: unknown; cwd?: unknown; tool?: unknown };
+      let request: { version?: unknown; argv?: unknown; cwd?: unknown; tool?: unknown; console?: unknown };
       try { request = JSON.parse(body.slice(0, end)); } catch { answer({ ok: false, error: 'The request was not valid JSON.' }); return; }
       if (request.version !== cliProtocolVersion) { answer({ ok: false, error: 'Update console-connect to match this app.' }); return; }
       if (!Array.isArray(request.argv) || request.argv.length > maxArguments || !request.argv.every(item => typeof item === 'string')
-        || typeof request.cwd !== 'string' || (request.tool !== undefined && typeof request.tool !== 'string')) {
+        || typeof request.cwd !== 'string' || (request.tool !== undefined && typeof request.tool !== 'string')
+        || (request.console !== undefined && typeof request.console !== 'string')) {
         answer({ ok: false, error: 'The request was malformed.' }); return;
       }
       const target = options.target();
@@ -51,6 +52,7 @@ export function startCliServer(options: { worktrees: string; target: () => WebCo
       const timer = setTimeout(() => { pending.delete(id); answer({ ok: false, error: 'Console Connect did not answer.' }); }, replyTimeoutMs);
       pending.set(id, reply => { clearTimeout(timer); pending.delete(id); answer(reply); });
       const forward: CliForward = { id, argv: request.argv as string[], cwd: request.cwd, tool: request.tool as string | undefined,
+        console: request.console as string | undefined,
         taskId: taskIdForCwd(options.worktrees, request.cwd) };
       target.send('cli-request', forward);
     });

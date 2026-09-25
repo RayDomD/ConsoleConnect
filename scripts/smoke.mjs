@@ -111,6 +111,17 @@ try {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/settings.png', Buffer.from(captured.data, 'base64'));
   }
+  // Automatic handling is off by default and is set per event kind on this computer.
+  if (!(await evaluate("document.querySelector('[data-auto=enabled]')?.checked === false && document.querySelector('[data-auto=questions]')?.disabled === true"))) throw new Error('Automatic handling was not off by default.');
+  await evaluate("(() => { const box = document.querySelector('[data-auto=enabled]'); box.checked = true; box.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  await evaluate("(() => { const select = document.querySelector('[data-auto=questions]'); select.value = 'auto'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  if (!(await evaluate("(() => { const saved = JSON.parse(localStorage.getItem('console-connect.orchestrator-auto')); return saved.enabled === true && saved.questions === 'auto' && saved.submissions === 'ask' && saved.dailyLimit === 20; })()"))) {
+    throw new Error('Automatic handling settings were not saved.');
+  }
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true });
+    await writeFile('dist/settings-orchestrator.png', Buffer.from(captured.data, 'base64'));
+  }
   await evaluate("document.querySelector('[data-action=settings-back]').click()");
   await evaluate(`document.querySelector('#host input[name=owner]').value='Alex'; document.querySelector('#host input[name=name]').value='Smoke team'; document.querySelector('#host input[name=repository]').value='https://github.com/example/demo'; document.querySelector('#host').requestSubmit();`);
   let visible = '';
@@ -363,6 +374,10 @@ try {
   if (!(await evaluate("Boolean(document.querySelector('#orchestrator-terminal .xterm')) && document.querySelector('.session-state')?.textContent === 'Session ended' && document.querySelector('.session-place')?.textContent === 'Main folder · no worktree'"))) {
     throw new Error(`The orchestrator console did not run: ${await evaluate("document.querySelector('.notice')?.innerText ?? document.querySelector('.desk-content')?.innerText.slice(0, 300)")}`);
   }
+  if (!(await evaluate("document.querySelector('.auto-badge')?.textContent === 'Auto · 0 of 20 today'"))) throw new Error('The orchestrator strip did not show the Auto badge.');
+  await evaluate("document.querySelector('[data-action=toggle-auto-pause]').click()");
+  if (!(await evaluate("document.querySelector('.auto-badge')?.textContent.startsWith('Auto paused')"))) throw new Error('Pause did not pause automatic handling.');
+  await evaluate("document.querySelector('[data-action=toggle-auto-pause]').click()");
   if (process.argv.includes('--screenshot')) {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/orchestrator.png', Buffer.from(captured.data, 'base64'));

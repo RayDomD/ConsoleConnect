@@ -242,7 +242,7 @@ ipcMain.handle('run-orchestrator', async (event, input: { repositoryPath: string
   const directory = await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository);
   const launch = providerLaunch(input.tool, process.env.CONSOLE_CONNECT_TEST_PROVIDER_VERSION === '1');
   const terminal = (require('node-pty') as typeof import('node-pty')).spawn(launch.file, launch.args, { cwd: directory, cols: 100, rows: 30,
-    name: 'xterm-256color', env: consoleEnvironment(process.env, cliBin, { CONSOLE_CONNECT_TOOL: input.tool }) });
+    name: 'xterm-256color', env: consoleEnvironment(process.env, cliBin, { CONSOLE_CONNECT_TOOL: input.tool, CONSOLE_CONNECT_CONSOLE: 'orchestrator' }) });
   // Not shareable yet: view-only sharing is keyed to tasks on the host.
   const session: LocalSession = { terminal, url: '', token: '', hosted: false, shared: false, pending: '', sending: false,
     onShareError: () => {}, timer: setTimeout(() => {}, 0) };
