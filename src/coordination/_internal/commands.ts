@@ -1,7 +1,93 @@
-import { RequestError, type Command, type Member, type WorkspaceState } from './protocol';
+import { ideaPaths, RequestError, type Command, type Idea, type Member, type WorkspaceState } from './protocol';
 
 // Decisions that stay with people (orchestrator ADR Q4): a tool may propose them, only a click sends them.
-const clickOnly = new Set<Command['type']>(['accept-package', 'request-changes', 'approve-decision', 'approve-task']);
+// Marking an idea ready is a gated move that waits for a person's click (guided path ADR Q20).
+const clickOnly = new Set<Command['type']>(['accept-package', 'request-changes', 'approve-decision', 'approve-task', 'mark-idea-ready']);
+
+type IdeaCommand = Extract<Command, { ideaId: string }>;
+
+function nextStage(idea: Idea): Idea['stage'] {
+  if (idea.stage === 'done') return 'done';
+  const path = ideaPaths[idea.size];
+  return path[path.indexOf(idea.stage) + 1] ?? 'done';
+}
+
+/** The gate for leaving the idea's current stage, or null when it is open (ADR Q20). */
+function stageGate(state: WorkspaceState, idea: Idea): string | null {
+  const linked = state.tasks.filter(task => idea.taskIds.includes(task.id));
+  switch (idea.stage) {
+    case 'talk': return idea.readyBy ? null : 'An Owner or Reviewer must mark it ready.';
+    case 'write': return state.decisions.some(item => item.id === idea.specDecisionId && item.status === 'official')
+      ? null : 'Approve the spec as a decision first.';
+    case 'split': return linked.length ? null : 'Link at least one task.';
+    case 'build':
+      if (!linked.length) return 'Link at least one task.';
+      return linked.every(task => task.status === 'accepted' || task.status === 'completed') ? null : 'Waiting for every linked task to be accepted.';
+    case 'review':
+      if (!linked.length) return 'Link at least one task.';
+      return linked.every(task => task.status === 'completed') ? null : 'Waiting for every linked task to be completed.';
+    case 'done': return 'This idea is done.';
+  }
+}
+
+function applyIdeaCommand(state: WorkspaceState, actor: Member, command: IdeaCommand) {
+  const ideas = state.ideas ??= [];
+  if (command.type === 'create-idea') {
+    if (ideas.some(item => item.id === command.ideaId)) throw new RequestError(409, 'This idea already exists.');
+    ideas.push({ id: command.ideaId, title: command.title, note: command.note ?? '', size: command.size,
+      stage: ideaPaths[command.size][0]!, createdBy: actor.id, createdAt: new Date().toISOString(), revision: 1,
+      skipped: [], documents: [], taskIds: [] });
+    return;
+  }
+  const idea = ideas.find(item => item.id === command.ideaId);
+  if (!idea) throw new RequestError(404, 'Idea not found.');
+  if (command.type === 'delete-idea') {
+    if (idea.createdBy !== actor.id && actor.role !== 'owner') throw new RequestError(403, 'Only the person who added this idea or the Owner can delete it.');
+    state.ideas = ideas.filter(item => item !== idea);
+    return;
+  }
+  if (idea.revision !== command.revision) throw new RequestError(409, 'This idea changed. Refresh it before trying again.');
+  switch (command.type) {
+    case 'update-idea':
+      if (command.title !== undefined) idea.title = command.title;
+      if (command.note !== undefined) idea.note = command.note;
+      if (command.size && command.size !== idea.size) {
+        // Keep what was passed: land on the first stage of the new path this idea has not been through.
+        const oldPath = ideaPaths[idea.size];
+        const passed = idea.stage === 'done' ? oldPath : oldPath.slice(0, oldPath.indexOf(idea.stage));
+        idea.size = command.size;
+        idea.stage = ideaPaths[command.size].find(stage => !passed.includes(stage)) ?? 'done';
+      }
+      break;
+    case 'mark-idea-ready':
+      if (actor.role === 'contributor') throw new RequestError(403, 'Only an Owner or Reviewer can mark an idea ready.');
+      if (idea.stage !== 'talk') throw new RequestError(409, 'Only an idea in Talk it through can be marked ready.');
+      idea.readyBy = actor.id;
+      break;
+    case 'advance-idea': {
+      const gate = stageGate(state, idea);
+      if (gate) throw new RequestError(409, gate);
+      idea.stage = nextStage(idea);
+      break;
+    }
+    case 'skip-idea-stage':
+      if (idea.stage === 'done') throw new RequestError(409, 'This idea is done.');
+      idea.skipped.push({ stage: idea.stage, reason: command.reason, by: actor.id });
+      idea.stage = nextStage(idea);
+      break;
+    case 'link-idea':
+      if (command.taskIds?.some(id => !state.tasks.some(task => task.id === id))) throw new RequestError(400, 'Choose existing tasks.');
+      if (command.specDecisionId && !state.decisions.some(item => item.id === command.specDecisionId)) throw new RequestError(400, 'Choose an existing decision.');
+      if (command.taskIds) idea.taskIds = [...new Set([...idea.taskIds, ...command.taskIds])];
+      if (command.document) {
+        const document = command.document;
+        idea.documents = [...idea.documents.filter(item => item.stage !== document.stage || item.path !== document.path), document];
+      }
+      if (command.specDecisionId) idea.specDecisionId = command.specDecisionId;
+      break;
+  }
+  idea.revision += 1;
+}
 
 function checkAssigningRule(state: WorkspaceState, actor: Member) {
   const rule = state.settings?.assigningRule ?? 'anyone';
@@ -12,6 +98,7 @@ function checkAssigningRule(state: WorkspaceState, actor: Member) {
 
 export function applyCommand(state: WorkspaceState, actor: Member, command: Command) {
   if (command.via && clickOnly.has(command.type)) throw new RequestError(403, 'This needs a click in Console Connect.');
+  if ('ideaId' in command) { applyIdeaCommand(state, actor, command); return; }
   // Informational: it does not bump the task revision, so it never makes the worker's own commands conflict.
   if (command.type === 'report-session') {
     const task = state.tasks.find(item => item.id === command.taskId);

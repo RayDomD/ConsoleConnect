@@ -35,9 +35,25 @@ export interface Decision {
   status: 'proposed' | 'official' | 'superseded'; documentCommit?: string;
   supersedesId?: string; affectedTaskIds: string[];
 }
+// The guided path (ADR Q15, Q19, Q20): an idea moves through the stages its size puts on its path.
+export const ideaSizeSchema = z.enum(['quick', 'feature', 'big']);
+export type IdeaSize = z.infer<typeof ideaSizeSchema>;
+export const ideaStageSchema = z.enum(['talk', 'write', 'split', 'build', 'review']);
+export type IdeaStage = z.infer<typeof ideaStageSchema>;
+export const ideaStages: IdeaStage[] = ['talk', 'write', 'split', 'build', 'review'];
+export const ideaPaths: Record<IdeaSize, IdeaStage[]> = {
+  quick: ['build', 'review'], feature: ['talk', 'split', 'build', 'review'], big: ideaStages,
+};
+export interface Idea {
+  id: string; title: string; note: string; size: IdeaSize; stage: IdeaStage | 'done';
+  createdBy: string; createdAt: string; revision: number; readyBy?: string;
+  skipped: { stage: IdeaStage; reason: string; by: string }[];
+  documents: { stage: IdeaStage; path: string }[];
+  taskIds: string[]; specDecisionId?: string; sample?: boolean;
+}
 export interface Snapshot {
   workspace: { id: string; name: string; repository: string };
-  revision: number; members: Member[]; tasks: Task[]; messages: Message[]; decisions: Decision[];
+  revision: number; members: Member[]; tasks: Task[]; messages: Message[]; decisions: Decision[]; ideas?: Idea[];
   sharedTerminalTaskIds?: string[]; memberId: string; settings?: WorkspaceSettings; presence?: MemberPresence[];
 }
 const identifier = z.string().uuid();
@@ -73,11 +89,25 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ ...commandBase, type: z.literal('approve-decision'), decisionId: identifier,
     commitSha: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i) }),
   z.object({ ...commandBase, type: z.literal('acknowledge-decision'), taskId: identifier, revision, decisionId: identifier }),
+  z.object({ ...commandBase, type: z.literal('create-idea'), ideaId: identifier,
+    title: z.string().trim().min(1).max(160), note: z.string().max(32000).optional(), size: ideaSizeSchema }),
+  z.object({ ...commandBase, type: z.literal('update-idea'), ideaId: identifier, revision,
+    title: z.string().trim().min(1).max(160).optional(), note: z.string().max(32000).optional(), size: ideaSizeSchema.optional() }),
+  z.object({ ...commandBase, type: z.literal('mark-idea-ready'), ideaId: identifier, revision }),
+  z.object({ ...commandBase, type: z.literal('advance-idea'), ideaId: identifier, revision }),
+  z.object({ ...commandBase, type: z.literal('skip-idea-stage'), ideaId: identifier, revision, reason: z.string().trim().min(1).max(200) }),
+  z.object({ ...commandBase, type: z.literal('link-idea'), ideaId: identifier, revision,
+    taskIds: z.array(identifier).max(100).optional(),
+    document: z.object({ stage: ideaStageSchema, path: z.string().trim().min(1).max(500) }).optional(),
+    specDecisionId: identifier.optional() }),
+  z.object({ ...commandBase, type: z.literal('delete-idea'), ideaId: identifier }),
 ]);
 export type Command = z.infer<typeof commandSchema>;
 export type CommandInput = Command extends infer C ? C extends Command ? Omit<C, 'id'> : never : never;
 export interface WorkspaceState {
   workspace: Snapshot['workspace']; revision: number; members: Member[]; tasks: Task[]; messages: Message[]; decisions: Decision[];
+  /** Absent in states saved before the guided path; read as empty. */
+  ideas?: Idea[];
   settings?: WorkspaceSettings;
   credentials: Record<string, string>;
   invites: Record<string, { role: Exclude<Role, 'owner'>; expiresAt: number }>;
@@ -119,6 +149,6 @@ export function snapshot(state: WorkspaceState, memberId: string): Snapshot {
     const { draftPackage: _private, ...shared } = task;
     return shared;
   });
-  return { workspace: state.workspace, revision: state.revision, members: state.members, tasks, messages: state.messages, decisions: state.decisions, memberId,
+  return { workspace: state.workspace, revision: state.revision, members: state.members, tasks, messages: state.messages, decisions: state.decisions, ideas: state.ideas ?? [], memberId,
     settings: { assigningRule: state.settings?.assigningRule ?? 'anyone' } };
 }
