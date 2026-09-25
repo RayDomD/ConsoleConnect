@@ -353,3 +353,27 @@ test('accepting, requesting changes, and approving need a person, never a tool',
   }
   expect((await send(host.token, { type: 'accept-package', taskId, revision: 5 })).status).toBe(200);
 });
+
+test('the owner sets who can assign, and the host enforces it for every path', async () => {
+  const host = await workspace();
+  const riley = await teammate(host.url, host.token, 'reviewer');
+  const casey = await teammate(host.url, host.token, 'contributor');
+  const send = (token: string, command: object) => api(host.url, token, '/commands', { id: randomUUID(), ...command });
+  const task = (assigneeId: string | null) => ({ type: 'create-task', taskId: randomUUID(), title: 'Work', description: '', assigneeId });
+  expect((await api(host.url, host.token, '/state')).data.settings).toEqual({ assigningRule: 'anyone' });
+  expect((await send(casey.token, task(riley.memberId))).status).toBe(200);
+  expect((await send(riley.token, { type: 'set-assigning-rule', rule: 'leads' })).status).toBe(403);
+  expect((await send(host.token, { type: 'set-assigning-rule', rule: 'leads' })).status).toBe(200);
+  const refused = await send(casey.token, { ...task(riley.memberId), via: 'codex' });
+  expect(refused.status).toBe(403);
+  expect(refused.data.error).toContain('Only Owners and Reviewers assign');
+  const unassigned = task(null);
+  expect((await send(casey.token, unassigned)).status).toBe(200);
+  expect((await send(casey.token, { type: 'assign-task', taskId: unassigned.taskId, revision: 1, assigneeId: riley.memberId })).status).toBe(403);
+  expect((await send(casey.token, { type: 'assign-task', taskId: unassigned.taskId, revision: 1, assigneeId: casey.memberId })).status).toBe(200);
+  expect((await send(riley.token, task(casey.memberId))).status).toBe(200);
+  expect((await send(host.token, { type: 'set-assigning-rule', rule: 'owner' })).status).toBe(200);
+  expect((await send(riley.token, task(casey.memberId))).status).toBe(403);
+  expect((await send(host.token, task(casey.memberId))).status).toBe(200);
+  expect((await api(host.url, riley.token, '/state')).data.settings).toEqual({ assigningRule: 'owner' });
+});

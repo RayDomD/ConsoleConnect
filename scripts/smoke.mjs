@@ -329,6 +329,14 @@ try {
   }
   const closed = await cli(['brief'], process.platform === 'win32' ? '\\\\.\\pipe\\cc-smoke-closed' : join(directory, 'closed.sock'));
   if (closed.code !== 2 || !closed.stderr.includes('Open Console Connect')) throw new Error(`console-connect without the app should exit 2: ${JSON.stringify(closed)}`);
+  // The owner sets the team's assigning rule from the Team section; the host records it.
+  await evaluate("(() => { const select = document.querySelector('#assigning-rule'); select.value = 'leads'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if ((await hostCall('/state')).settings?.assigningRule === 'leads') break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if ((await hostCall('/state')).settings?.assigningRule !== 'leads') throw new Error('The assigning rule did not reach the host.');
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'set-assigning-rule', rule: 'anyone' });
   const taskId = crypto.randomUUID();
   const hostState = await hostCall('/state');
   await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId,

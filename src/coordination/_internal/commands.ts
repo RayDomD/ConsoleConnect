@@ -3,8 +3,20 @@ import { RequestError, type Command, type Member, type WorkspaceState } from './
 // Decisions that stay with people (orchestrator ADR Q4): a tool may propose them, only a click sends them.
 const clickOnly = new Set<Command['type']>(['accept-package', 'request-changes', 'approve-decision', 'approve-task']);
 
+function checkAssigningRule(state: WorkspaceState, actor: Member) {
+  const rule = state.settings?.assigningRule ?? 'anyone';
+  const hint = 'Claim the task, or suggest an assignee in its discussion.';
+  if (rule === 'leads' && actor.role === 'contributor') throw new RequestError(403, `Only Owners and Reviewers assign work on this team. ${hint}`);
+  if (rule === 'owner' && actor.role !== 'owner') throw new RequestError(403, `Only the Owner assigns work on this team. ${hint}`);
+}
+
 export function applyCommand(state: WorkspaceState, actor: Member, command: Command) {
   if (command.via && clickOnly.has(command.type)) throw new RequestError(403, 'This needs a click in Console Connect.');
+  if (command.type === 'set-assigning-rule') {
+    if (actor.role !== 'owner') throw new RequestError(403, 'Only the Owner can change who assigns work.');
+    state.settings = { ...state.settings, assigningRule: command.rule };
+    return;
+  }
   if (command.type === 'propose-decision') {
     if (state.decisions.some(item => item.id === command.decisionId)) throw new RequestError(409, 'This decision already exists.');
     if (command.supersedesId && !state.decisions.some(item => item.id === command.supersedesId && item.status === 'official')) {
@@ -39,6 +51,7 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
   if (command.type === 'create-task') {
     if (state.tasks.some(task => task.id === command.taskId)) throw new RequestError(409, 'This task already exists.');
     if (command.assigneeId && !state.members.some(member => member.id === command.assigneeId)) throw new RequestError(400, 'Choose a workspace member.');
+    if (command.assigneeId && command.assigneeId !== actor.id) checkAssigningRule(state, actor);
     state.tasks.push({ id: command.taskId, title: command.title, description: command.description,
       authorId: actor.id, assigneeId: command.assigneeId, status: command.assigneeId ? 'awaiting_approval' : 'unassigned',
       revision: 1, createdAt: new Date().toISOString(),
@@ -79,6 +92,7 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
     if (command.type === 'claim-task') { task.assigneeId = actor.id; task.status = 'ready'; }
     else {
       if (!state.members.some(member => member.id === command.assigneeId)) throw new RequestError(400, 'Choose a workspace member.');
+      if (command.assigneeId !== actor.id) checkAssigningRule(state, actor);
       task.assigneeId = command.assigneeId;
       task.status = command.assigneeId === actor.id ? 'ready' : 'awaiting_approval';
       task.assignedBy = actor.id;

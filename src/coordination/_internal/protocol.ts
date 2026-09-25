@@ -4,6 +4,10 @@ import type { PullRequestStatus } from '../../github';
 export const toolSchema = z.enum(['claude', 'codex', 'antigravity']);
 export type Tool = z.infer<typeof toolSchema>;
 export type Role = 'owner' | 'reviewer' | 'contributor';
+// Who may hand work to someone else (orchestrator ADR Q11). Claiming and self-assignment stay open to everyone.
+export const assigningRuleSchema = z.enum(['anyone', 'leads', 'owner']);
+export type AssigningRule = z.infer<typeof assigningRuleSchema>;
+export interface WorkspaceSettings { assigningRule: AssigningRule }
 export interface Member { id: string; name: string; role: Role }
 export interface Task {
   id: string; title: string; description: string; authorId: string; assigneeId: string | null;
@@ -30,7 +34,7 @@ export interface Decision {
 export interface Snapshot {
   workspace: { id: string; name: string; repository: string };
   revision: number; members: Member[]; tasks: Task[]; messages: Message[]; decisions: Decision[];
-  sharedTerminalTaskIds?: string[]; memberId: string;
+  sharedTerminalTaskIds?: string[]; memberId: string; settings?: WorkspaceSettings;
 }
 const identifier = z.string().uuid();
 const revision = z.number().int().positive();
@@ -40,6 +44,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ ...commandBase, type: z.literal('create-task'), taskId: identifier,
     title: z.string().trim().min(1).max(160), description: z.string().max(32000), assigneeId: identifier.nullable() }),
   z.object({ ...commandBase, type: z.literal('approve-task'), taskId: identifier, revision }),
+  z.object({ ...commandBase, type: z.literal('set-assigning-rule'), rule: assigningRuleSchema }),
   z.object({ ...commandBase, type: z.literal('claim-task'), taskId: identifier, revision }),
   z.object({ ...commandBase, type: z.literal('assign-task'), taskId: identifier, revision, assigneeId: identifier }),
   z.object({ ...commandBase, type: z.literal('start-task'), taskId: identifier, revision, tool: toolSchema }),
@@ -67,6 +72,7 @@ export type Command = z.infer<typeof commandSchema>;
 export type CommandInput = Command extends infer C ? C extends Command ? Omit<C, 'id'> : never : never;
 export interface WorkspaceState {
   workspace: Snapshot['workspace']; revision: number; members: Member[]; tasks: Task[]; messages: Message[]; decisions: Decision[];
+  settings?: WorkspaceSettings;
   credentials: Record<string, string>;
   invites: Record<string, { role: Exclude<Role, 'owner'>; expiresAt: number }>;
   appliedCommands: Record<string, { actorId: string; digest: string }>;
@@ -81,5 +87,6 @@ export function snapshot(state: WorkspaceState, memberId: string): Snapshot {
     const { draftPackage: _private, ...shared } = task;
     return shared;
   });
-  return { workspace: state.workspace, revision: state.revision, members: state.members, tasks, messages: state.messages, decisions: state.decisions, memberId };
+  return { workspace: state.workspace, revision: state.revision, members: state.members, tasks, messages: state.messages, decisions: state.decisions, memberId,
+    settings: { assigningRule: state.settings?.assigningRule ?? 'anyone' } };
 }

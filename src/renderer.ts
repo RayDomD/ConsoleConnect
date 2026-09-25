@@ -1,6 +1,6 @@
 import { loadTheme, selectTheme, themes, type ThemeId } from './themes';
 import type { Message, Snapshot, Task } from './coordination';
-import { commandSchema, toolSchema } from './coordination/_internal/protocol';
+import { commandSchema, toolSchema, type AssigningRule } from './coordination/_internal/protocol';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { flushPending, loadPending, savePending } from './offline';
@@ -423,9 +423,10 @@ function taskActions(task: Task) {
   const mine = task.assigneeId === snapshot?.memberId;
   const reviewer = !mine && snapshot?.members.find(member => member.id === snapshot?.memberId)?.role !== 'contributor';
   if (task.status === 'unassigned') {
-    const teammates = snapshot!.members.filter(member => member.id !== snapshot!.memberId);
+    // The team's assigning rule decides whether this person may hand work to someone else.
+    const teammates = canAssign() ? snapshot!.members.filter(member => member.id !== snapshot!.memberId) : [];
     const menu = assignMenuOpen ? `<div class="menu" role="menu" aria-label="Teammates">${teammates.map(member => `<button class="menu-item" role="menuitem" data-action="assign" data-member="${escape(member.id)}"><span class="avatar" aria-hidden="true">${escape(member.name.slice(0, 1).toUpperCase())}</span>${escape(member.name)}</button>`).join('')}</div>` : '';
-    return `<p class="action-heading">Nobody has this yet</p><div class="actions"><button data-action="claim">Claim task</button>${teammates.length ? `<span class="actions-or">or</span><div class="assign-menu"><button class="secondary" data-action="toggle-assign-menu" aria-haspopup="menu" aria-expanded="${assignMenuOpen}">Assign to teammate${chevronIcon}</button>${menu}</div>` : ''}</div>`;
+    return `<p class="action-heading">Nobody has this yet</p><div class="actions"><button data-action="claim">Claim task</button>${teammates.length ? `<span class="actions-or">or</span><div class="assign-menu"><button class="secondary" data-action="toggle-assign-menu" aria-haspopup="menu" aria-expanded="${assignMenuOpen}">Assign to teammate${chevronIcon}</button>${menu}</div>` : ''}</div>${canAssign() ? '' : '<p class="action-hint">Your team lets leads assign work. Suggest an assignee in the discussion.</p>'}`;
   }
   if (mine && task.status === 'awaiting_approval') return '<button data-action="approve">Approve assignment</button>';
   if (mine && task.status === 'ready') return '<button data-action="task-tab" data-tab="console">Open console</button>';
@@ -455,6 +456,25 @@ function assignedByLine(task: Task) {
   if (!task.assignedBy || task.assignedBy === task.assigneeId) return '';
   const name = snapshot?.members.find(member => member.id === task.assignedBy)?.name ?? 'a teammate';
   return `<span aria-hidden="true">·</span><span>Assigned by ${escape(name)}${task.via ? ` ${viaLabel(task.via)}` : ''}</span>`;
+}
+
+const assigningRules: Record<AssigningRule, { short: string; full: string }> = {
+  anyone: { short: 'Anyone', full: 'Anyone can assign to anyone. Recipients still approve.' },
+  leads: { short: 'Owners and Reviewers', full: 'Owners and Reviewers assign. Contributors claim or suggest an assignee.' },
+  owner: { short: 'Owner only', full: 'Only the Owner assigns. Everyone else claims or suggests.' },
+};
+
+function canAssign() {
+  const role = snapshot?.members.find(member => member.id === snapshot?.memberId)?.role;
+  const rule = snapshot?.settings?.assigningRule ?? 'anyone';
+  return rule === 'anyone' || (rule === 'leads' && role !== 'contributor') || role === 'owner';
+}
+
+function assigningRuleMarkup(owner: boolean) {
+  const rule = snapshot?.settings?.assigningRule ?? 'anyone';
+  return owner
+    ? `<label class="assigning-rule">Who assigns work<select id="assigning-rule">${Object.entries(assigningRules).map(([id, label]) => `<option value="${id}" ${id === rule ? 'selected' : ''}>${label.short}</option>`).join('')}</select><small>${assigningRules[rule].full} Applies to every orchestrator too.</small></label>`
+    : `<p class="assigning-rule">Who assigns work<small>${assigningRules[rule].full}</small></p>`;
 }
 
 function taskBody(task: Task) {
@@ -615,7 +635,7 @@ function render() {
   const selected = snapshot.tasks.find(task => task.id === selectedTaskId) ?? snapshot.tasks[0];
   const me = snapshot.members.find(member => member.id === snapshot!.memberId);
   const unread = unreadTeamMessages();
-  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(sentenceCase(task.status))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(sentenceCase(task.status))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
   document.querySelector('.desk-content')?.classList.toggle('console-active', taskTab === 'console' && !showWorkspaceChat);
   document.querySelector('.topbar div')!.innerHTML = `<button class="text-button topbar-jump" data-action="open-palette" title="Jump to a task, person, or action">Jump<kbd>Ctrl</kbd><kbd>K</kbd></button><button class="secondary topbar-chat" data-action="open-chat-drawer" title="Team chat (C)">Chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button><button class="text-button" data-action="disconnect">Projects</button>`;
   if (me?.role !== 'owner') document.querySelector('.invite')?.remove();
@@ -742,6 +762,9 @@ app.addEventListener('change', event => {
   const target = event.target as HTMLElement;
   if (target.id === 'theme') { selectTheme((target as HTMLSelectElement).value as ThemeId); render(); }
   if (target.id === 'press-sound') setPressSound((target as HTMLInputElement).checked);
+  if (target.id === 'assigning-rule') {
+    void command(null, { type: 'set-assigning-rule', rule: (target as HTMLSelectElement).value }).catch(error => { notice = (error as Error).message; render(); });
+  }
   if (target.id === 'chat-notifications-enabled' || target.id === 'chat-notifications-preview') {
     const checkbox = target as HTMLInputElement;
     if (target.id === 'chat-notifications-enabled') chatNotifications.enabled = checkbox.checked;
