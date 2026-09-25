@@ -9,7 +9,7 @@ summary: Ordered build of housekeeping, P1–P9 and console workspace, orchestra
 
 ## Status & Progress Summary
 
-Phase 0 and Phase 1 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-ui-improvements-summary.md`). Next: Phase 2.0, the orchestrator spec.
+Phase 0 and Phase 1 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-ui-improvements-summary.md`). Phase 2.0 spec written: `docs/plans/2026-09-25-orchestrator-spec.md`. Next: 2.1.
 
 Everything decided on 2026-09-25 and not yet built. Handoff for fresh sessions: `.goal/2026-09-25-build.md`. Sizes are rough session estimates.
 
