@@ -79,6 +79,7 @@ let keyboardMove = false;
 // Focus mode (F) on the console tab: sidebar as dots, title in the top bar, the well edge to edge.
 let consoleFocus = false;
 let decliningTaskId: string | null = null;
+let requestingChangesTaskId: string | null = null;
 // Reviews a tool proposed through console-connect; each waits for the person's click (orchestrator ADR Q4).
 let reviewProposals: ReviewProposal[] = [];
 let editingProposal = false;
@@ -439,7 +440,10 @@ function taskActions(task: Task) {
     const draft = task.draftPackage ?? task.package;
     return `<form id="package"><label>Summary<input name="summary" required value="${escape(draft?.summary)}"></label><label>Branch, commit, or document<input name="sourceRef" required value="${escape(draft?.sourceRef ?? `console-connect/${task.id}`)}"></label><label>Pull request URL, if available<input name="pullRequestUrl" type="url" value="${escape(draft?.pullRequestUrl)}"></label><label>Deliverables, one per line<textarea name="deliverables">${escape(draft?.deliverables.join('\n'))}</textarea></label><label>Verification<textarea name="verification">${escape(draft?.verification)}</textarea></label><label>Open questions<textarea name="questions">${escape(draft?.questions)}</textarea></label><div class="actions"><button type="submit">Save draft</button>${task.draftPackage ? '<button type="button" data-action="submit">Submit for review</button>' : ''}</div></form>`;
   }
-  if (reviewer && task.status === 'submitted') return '<div class="actions"><button data-action="accept">Accept package</button><button class="secondary" data-action="request-changes">Request changes</button></div>';
+  if (reviewer && task.status === 'submitted') {
+    if (requestingChangesTaskId !== task.id) return '<div class="actions"><button data-action="accept">Accept package</button><button class="secondary" data-action="request-changes">Request changes</button></div>';
+    return '<form id="request-changes"><label>What needs to change?<textarea name="note" required maxlength="8000"></textarea></label><div class="actions"><button type="submit">Send request</button><button type="button" class="text-button" data-action="cancel-request-changes">Cancel</button></div></form>';
+  }
   return '';
 }
 
@@ -883,6 +887,11 @@ app.addEventListener('submit', async event => {
         body: { code: value('code'), name: value('name') } });
       if (result.status >= 400) throw new Error(result.data.error);
       connection = { mode: 'supabase', projectUrl, publishableKey, workspaceId: result.data.workspaceId };
+    } else if (form.id === 'request-changes') {
+      const task = snapshot!.tasks.find(item => item.id === requestingChangesTaskId);
+      if (!task) throw new Error('Choose a task first.');
+      requestingChangesTaskId = null;
+      await command(task, { type: 'request-changes', note: value('note') });
     } else if (form.id === 'decline-task') {
       const task = snapshot!.tasks.find(item => item.id === decliningTaskId);
       if (!task) throw new Error('Choose a task first.');
@@ -1223,7 +1232,9 @@ app.addEventListener('click', async event => {
     }
     if (action === 'submit') await command(task, { type: 'submit-package' });
     if (action === 'accept') await command(task, { type: 'accept-package' });
-    if (action === 'request-changes') { const note = prompt('What needs to change?'); if (note) await command(task, { type: 'request-changes', note }); }
+    // Electron has no prompt(), so the note is written inline.
+    if (action === 'request-changes') { requestingChangesTaskId = task.id; render(); document.querySelector<HTMLTextAreaElement>('#request-changes textarea')?.focus(); return; }
+    if (action === 'cancel-request-changes') { requestingChangesTaskId = null; render(); return; }
   } catch (error) { notice = (error as Error).message; render(); }
 });
 

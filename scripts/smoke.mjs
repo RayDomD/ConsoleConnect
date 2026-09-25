@@ -435,6 +435,25 @@ try {
   if (reviewed.tasks.find(task => task.id === reviewTaskId).status !== 'accepted') throw new Error('Confirming the proposal did not accept the package.');
   if (reviewed.messages.find(message => message.body === 'Tests pass and the copy matches.')?.via !== 'codex') throw new Error('The proposal note was not posted via Codex.');
   if (await evaluate("Boolean(document.querySelector('.proposal'))")) throw new Error('The confirmation card stayed open.');
+  // Requesting changes by hand writes the note inline (Electron has no prompt()).
+  const changesTaskId = crypto.randomUUID();
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId: changesTaskId, title: 'Invite email copy', description: '', assigneeId: hostState.memberId });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'approve-task', taskId: changesTaskId, revision: 1 });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'start-task', taskId: changesTaskId, revision: 2, tool: 'codex' });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'save-package', taskId: changesTaskId, revision: 3, summary: 'Email copy', sourceRef: 'main', deliverables: [], verification: '', questions: '' });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'submit-package', taskId: changesTaskId, revision: 4 });
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate(`(() => { const row = document.querySelector('[data-task="${changesTaskId}"]'); if (!row) return false; row.click(); document.querySelector('[data-tab=package]')?.click(); return Boolean(document.querySelector('[data-action=request-changes]')); })()`)) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  await evaluate("document.querySelector('[data-action=request-changes]').click()");
+  await evaluate("document.querySelector('#request-changes textarea').value = 'Mention the 24-hour limit.'; document.querySelector('#request-changes').requestSubmit()");
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if ((await hostCall('/state')).tasks.find(task => task.id === changesTaskId).status === 'changes_requested') break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  const changed = (await hostCall('/state')).tasks.find(task => task.id === changesTaskId);
+  if (changed.status !== 'changes_requested' || changed.package.reviewNote !== 'Mention the 24-hour limit.') throw new Error('Request changes did not send the inline note.');
   const incomingMessageId = crypto.randomUUID();
   await hostCall('/commands', { id: incomingMessageId, type: 'post-message', body: 'Can someone test invitation expiry?' });
   for (let attempt = 0; attempt < 30; attempt++) {
