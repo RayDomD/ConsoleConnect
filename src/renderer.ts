@@ -9,7 +9,7 @@ import { invitationLink, parseInvitationLink } from './invitations';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { consoleReadiness, needsInput } from './console-state';
-import { defaultAutoSettings, detectEvents, eventLine, planAutoRun, runCliCommand, taskBrief, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkspaceApi } from './orchestrator';
+import { defaultAutoSettings, detectEvents, detectWorkerEvents, eventLine, planAutoRun, runCliCommand, taskBrief, workerLine, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkerEvent, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -150,6 +150,20 @@ function typeOrchestratorEvents() {
     orchestratorTypedAt = Date.now();
   }
   render();
+}
+
+// Worker side (orchestrator ADR Q10): replies and change requests on this person's running task are typed
+// into its console. Replies may be sent automatically if the worker chose that; change requests always wait.
+let workerEvents: WorkerEvent[] = [];
+let workerTypedAt = 0;
+
+function typeWorkerEvents() {
+  if (!terminalTaskId || !terminalSessionActive || !workerEvents.length || briefPendingTaskId === terminalTaskId) return;
+  if (workerTypedAt > terminalLastInputAt || localReadiness() !== 'ready') return;
+  const autoReplies = loadAutoSettings().workerReplies === 'auto' && workerEvents.every(event => event.kind === 'reply');
+  window.consoleConnect.terminalWrite({ taskId: terminalTaskId, data: workerLine(workerEvents) + (autoReplies ? '\r' : '') });
+  workerEvents = [];
+  workerTypedAt = autoReplies ? 0 : Date.now();
 }
 
 // Worker side of stalls: after this long waiting on its owner, the session is reported so the orchestrator hears.
@@ -469,7 +483,10 @@ async function refreshOnce() {
     if (!snapshot || next.revision >= snapshot.revision) {
       const shouldRender = changed || next.revision !== snapshot?.revision || !snapshot;
       observeTeamMessages(next);
-      queueOrchestratorEvents(detectEvents(snapshot?.workspace.id === next.workspace.id && snapshot.memberId === next.memberId ? snapshot : null, next));
+      const previous = snapshot?.workspace.id === next.workspace.id && snapshot.memberId === next.memberId ? snapshot : null;
+      queueOrchestratorEvents(detectEvents(previous, next));
+      // Decision changes wait for acknowledgement in the app (banner under the console), so only the rest is queued.
+      if (terminalTaskId && terminalSessionActive) workerEvents.push(...detectWorkerEvents(previous, next, terminalTaskId).filter(event => event.kind !== 'decision'));
       snapshot = next;
       rememberProject(active, next);
       if (shouldRender) render();
@@ -680,13 +697,18 @@ function typeBriefWhenReady() {
   if (localReadiness() !== 'ready') return;
   const task = snapshot?.tasks.find(item => item.id === briefPendingTaskId);
   briefPendingTaskId = null;
-  if (task && snapshot) window.consoleConnect.terminalWrite({ taskId: task.id, data: taskBrief(snapshot, task) });
+  if (task && snapshot) {
+    window.consoleConnect.terminalWrite({ taskId: task.id, data: taskBrief(snapshot, task) });
+    // The brief now waits in the input; later updates hold until the person sends or edits it.
+    workerTypedAt = Date.now();
+  }
 }
 setInterval(() => {
   const elapsed = document.querySelector('.session-elapsed');
   if (elapsed && terminalSessionActive) elapsed.textContent = elapsedLabel();
   typeBriefWhenReady();
   typeOrchestratorEvents();
+  typeWorkerEvents();
   reportSessionState();
   // Re-render only when the inferred state flips, so the terminal and any focus stay put.
   if (localSessionNeedsInput() !== terminalNeedsInput) { terminalNeedsInput = !terminalNeedsInput; render(); }
@@ -750,7 +772,13 @@ function autoBadgeMarkup() {
 function autoSettingsMarkup() {
   const settings = loadAutoSettings();
   const choice = (key: 'questions' | 'stalls' | 'submissions', label: string, hint: string) => `<label class="auto-choice"><span>${label}<small>${hint}</small></span><select data-auto="${key}" ${settings.enabled ? '' : 'disabled'}><option value="ask" ${settings[key] === 'ask' ? 'selected' : ''}>Ask me</option><option value="auto" ${settings[key] === 'auto' ? 'selected' : ''}>Auto</option></select></label>`;
-  return `<label class="chat-setting-check"><input type="checkbox" data-auto="enabled" ${settings.enabled ? 'checked' : ''}>Let the orchestrator handle updates automatically</label><div class="auto-settings">${choice('questions', 'A teammate\'s AI asks a question', 'The orchestrator answers in the task discussion as you.')}${choice('stalls', 'A session gets stuck or ends without a package', 'The orchestrator suggests a next step to the owner.')}${choice('submissions', 'Work is submitted', 'The orchestrator reads the package and proposes a review; accepting waits for your click.')}<p class="auto-choice"><span>Assign follow-up work<small>New hand-outs from an automatic run are held for you to send.</small></span><strong>Always asks you</strong></p><label class="auto-choice"><span>Pause after this many automatic runs a day</span><input type="number" min="1" max="500" data-auto="dailyLimit" value="${settings.dailyLimit}" ${settings.enabled ? '' : 'disabled'}></label></div>`;
+  return `<label class="chat-setting-check"><input type="checkbox" data-auto="enabled" ${settings.enabled ? 'checked' : ''}>Let the orchestrator handle updates automatically</label><div class="auto-settings">${choice('questions', 'A teammate\'s AI asks a question', 'The orchestrator answers in the task discussion as you.')}${choice('stalls', 'A session gets stuck or ends without a package', 'The orchestrator suggests a next step to the owner.')}${choice('submissions', 'Work is submitted', 'The orchestrator reads the package and proposes a review; accepting waits for your click.')}<p class="auto-choice"><span>Assign follow-up work<small>New hand-outs from an automatic run are held for you to send.</small></span><strong>Always asks you</strong></p><label class="auto-choice"><span>Replies on your own tasks<small>Answers and comments reach your task console. Change requests and decision changes always wait for you.</small></span><select data-auto="workerReplies"><option value="ask" ${settings.workerReplies === 'ask' ? 'selected' : ''}>Ask me</option><option value="auto" ${settings.workerReplies === 'auto' ? 'selected' : ''}>Auto</option></select></label><label class="auto-choice"><span>Pause after this many automatic runs a day</span><input type="number" min="1" max="500" data-auto="dailyLimit" value="${settings.dailyLimit}" ${settings.enabled ? '' : 'disabled'}></label></div>`;
+}
+
+function decisionChangedMarkup(task: Task) {
+  const decision = snapshot!.decisions.find(item => item.id === task.pendingDecisionIds![0]);
+  if (!decision) return '';
+  return `<div class="decision-changed" role="status"><div><strong>The "${escape(decision.title)}" decision changed</strong><span>Acknowledge it before you submit. Your session keeps running until you decide.</span></div><button class="text-button" data-action="task-tab" data-tab="package">View the change</button><button class="secondary" data-action="ack-and-tell" data-decision="${escape(decision.id)}">Acknowledge and tell ${escape(toolNames[terminalTool] ?? 'your tool')}</button></div>`;
 }
 
 function orchestratorRailMarkup() {
@@ -927,7 +955,7 @@ function render() {
       const stop = localTerminal && terminalSessionActive ? '<button class="text-button session-stop" data-action="stop-console">Stop</button>' : '';
       const session = localTerminal && terminalTool ? `<span class="session-tool">${escape(toolNames[terminalTool] ?? terminalTool)}</span><span class="session-branch" title="console-connect/${escape(selected.id)}"><span class="session-branch-prefix">console-connect</span>/${escape(selected.id.slice(0, 8))}</span><span class="session-elapsed">${elapsedLabel()}</span>` : '';
       const status = localTerminal ? terminalSessionActive ? 'Session running' : 'Session ended' : watching ? 'View only' : 'No console';
-      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<span class="session-toggles"><button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button><button class="text-button" data-action="toggle-console-focus" aria-pressed="${consoleFocus}" title="Focus mode (F)">Focus<kbd>F</kbd></button></span></div>${localTerminal || watching ? `<div id="terminal" aria-label="Task console output"></div>${localTerminal && terminalSessionActive && terminalNeedsInput ? `<div class="needs-input" role="status"><i class="status-dot status-submitted" aria-hidden="true"></i>${escape(toolNames[terminalTool] ?? 'The tool')} may be waiting for you<span class="session-spacer"></span><button class="text-button" data-action="focus-terminal">Focus terminal<kbd>Ctrl</kbd><kbd>\`</kbd></button></div>` : ''}${localTerminal && selected.draftPackage && ['running', 'changes_requested'].includes(selected.status) ? '<div class="package-drafted" role="status"><i class="status-dot status-running" aria-hidden="true"></i>Your work package is drafted. Only you can see it.<span class="session-spacer"></span><button class="text-button" data-action="task-tab" data-tab="package">Review and submit</button></div>' : ''}` : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
+      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<span class="session-toggles"><button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button><button class="text-button" data-action="toggle-console-focus" aria-pressed="${consoleFocus}" title="Focus mode (F)">Focus<kbd>F</kbd></button></span></div>${localTerminal || watching ? `<div id="terminal" aria-label="Task console output"></div>${localTerminal && terminalSessionActive && terminalNeedsInput ? `<div class="needs-input" role="status"><i class="status-dot status-submitted" aria-hidden="true"></i>${escape(toolNames[terminalTool] ?? 'The tool')} may be waiting for you<span class="session-spacer"></span><button class="text-button" data-action="focus-terminal">Focus terminal<kbd>Ctrl</kbd><kbd>\`</kbd></button></div>` : ''}${localTerminal && terminalSessionActive && selected.assigneeId === snapshot.memberId && selected.pendingDecisionIds?.length ? decisionChangedMarkup(selected) : ''}${localTerminal && selected.draftPackage && ['running', 'changes_requested'].includes(selected.status) ? '<div class="package-drafted" role="status"><i class="status-dot status-running" aria-hidden="true"></i>Your work package is drafted. Only you can see it.<span class="session-spacer"></span><button class="text-button" data-action="task-tab" data-tab="package">Review and submit</button></div>' : ''}` : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
       if (localTerminal || watching) {
         terminalRenderSource = localTerminal ? 'local' : 'shared';
         terminalRenderedTaskId = selected.id;
@@ -1480,7 +1508,7 @@ app.addEventListener('click', async event => {
       terminalOutput = '';
       terminalSessionActive = true;
       terminalTool = tool; terminalStartedAt = Date.now(); terminalDirectory = ''; terminalLastOutputAt = Date.now(); terminalNeedsInput = false;
-      terminalLastInputAt = 0; briefPendingTaskId = task.id;
+      terminalLastInputAt = 0; briefPendingTaskId = task.id; workerEvents = []; workerTypedAt = 0;
       const active = connection!;
       const access = active.mode === 'supabase' ? { ...active, token: await hostedAccessToken(active) } : active;
       try { terminalDirectory = (await window.consoleConnect.runTask({ ...access, taskId: task.id, tool, repositoryPath })).directory; }
@@ -1505,6 +1533,12 @@ app.addEventListener('click', async event => {
     if (action === 'toggle-session-rail') {
       localStorage.setItem(sessionRailKey, sessionRailOpen() ? 'closed' : 'open');
       keyboardMove = true; render(); return;
+    }
+    if (action === 'ack-and-tell') {
+      const decision = snapshot?.decisions.find(item => item.id === button.dataset.decision);
+      await command(task, { type: 'acknowledge-decision', decisionId: button.dataset.decision });
+      if (decision) workerEvents.push({ kind: 'decision', decisionId: decision.id, title: decision.title, body: decision.body.replace(/\s+/g, ' ').slice(0, 400) });
+      return;
     }
     if (action === 'stop-console') {
       if (confirm('Stop this console? The tool ends and unsaved work in it may be lost.')) window.consoleConnect.terminalKill({ taskId: task.id });

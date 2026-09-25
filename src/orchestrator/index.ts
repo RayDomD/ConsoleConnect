@@ -1,3 +1,5 @@
+export { detectWorkerEvents, workerLine } from './_internal/worker-events';
+export type { WorkerEvent } from './_internal/worker-events';
 export { defaultAutoSettings, planAutoRun } from './_internal/auto';
 export type { AutoChoice, AutoSettings, AutoUsage } from './_internal/auto';
 export { detectEvents, eventLine } from './_internal/events';

@@ -2,10 +2,11 @@ import type { OrchestratorEvent } from './events';
 
 // Settings > Orchestrator (orchestrator ADR Q9), stored per person on their own computer. Off by default.
 export type AutoChoice = 'ask' | 'auto';
-export interface AutoSettings { enabled: boolean; questions: AutoChoice; stalls: AutoChoice; submissions: AutoChoice; dailyLimit: number }
+// `workerReplies` is the worker side (ADR Q10): replies on the person's own task may go straight to their tool.
+export interface AutoSettings { enabled: boolean; questions: AutoChoice; stalls: AutoChoice; submissions: AutoChoice; dailyLimit: number; workerReplies: AutoChoice }
 export interface AutoUsage { date: string; count: number }
 
-export const defaultAutoSettings: AutoSettings = { enabled: false, questions: 'ask', stalls: 'ask', submissions: 'ask', dailyLimit: 20 };
+export const defaultAutoSettings: AutoSettings = { enabled: false, questions: 'ask', stalls: 'ask', submissions: 'ask', dailyLimit: 20, workerReplies: 'ask' };
 
 const choiceFor = (event: OrchestratorEvent, settings: AutoSettings): AutoChoice => {
   if (event.kind === 'question') return settings.questions;
