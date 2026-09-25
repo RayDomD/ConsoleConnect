@@ -1,4 +1,6 @@
 import { execFile } from 'node:child_process';
+import { access, readdir } from 'node:fs/promises';
+import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { repositoryIdentity } from './repository';
 
@@ -15,4 +17,21 @@ export async function resolveLinkedRepository(repositoryPath: string, workspaceR
     throw new Error('This folder belongs to a different repository. Choose its clone or a fork with the linked repository as upstream.');
   }
   return root;
+}
+
+// Clones or forks of the linked repository sitting directly inside any of the search roots.
+// Only folders with their own .git are asked, so a wide root stays cheap.
+export async function findLinkedRepositories(searchRoots: string[], workspaceRepository: string) {
+  const candidates = new Set<string>();
+  for (const root of searchRoots) {
+    const entries = await readdir(root, { withFileTypes: true }).catch(() => []);
+    for (const entry of entries) if (entry.isDirectory()) candidates.add(join(root, entry.name));
+  }
+  const checked = await Promise.all([...candidates].map(async folder => {
+    try {
+      await access(join(folder, '.git'));
+      return await resolveLinkedRepository(folder, workspaceRepository);
+    } catch { return null; }
+  }));
+  return [...new Set(checked.filter((path): path is string => path !== null))];
 }

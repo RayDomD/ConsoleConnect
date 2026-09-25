@@ -1,6 +1,6 @@
 import { app, BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
 import { join, sep } from 'node:path';
-import { networkInterfaces } from 'node:os';
+import { homedir, networkInterfaces } from 'node:os';
 import { readFile } from 'node:fs/promises';
 import type { IPty } from 'node-pty';
 import { startHost } from './coordination';
@@ -9,7 +9,7 @@ import type { Snapshot, Tool } from './coordination';
 import { prepareDecisionFile } from './decisions';
 import { privateVpnAddress } from './network';
 import { providerLaunch } from './providers';
-import { resolveLinkedRepository } from './local-repository';
+import { findLinkedRepositories, resolveLinkedRepository } from './local-repository';
 import { oauthCallbackUrl } from './oauth';
 import { receiveOAuthCallback } from './oauth-callback';
 import { consoleEnvironment, startCliServer, writeCliShims } from './cli-server';
@@ -146,10 +146,17 @@ ipcMain.handle('watch-workspace', (event, input: { url: string; token: string })
 
 ipcMain.on('stop-watch-workspace', () => { workspaceWatch?.abort(); workspaceWatch = null; });
 
-ipcMain.handle('choose-repository', async () => {
-  const result = await dialog.showOpenDialog({ properties: ['openDirectory'], title: 'Choose your local project copy' });
+ipcMain.handle('choose-repository', async (_event, input?: { workspaceRepository?: string; defaultPath?: string }) => {
+  const title = input?.workspaceRepository ? `Choose your local copy of ${input.workspaceRepository}` : 'Choose your local project copy';
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'], title, defaultPath: input?.defaultPath });
   return result.canceled ? null : result.filePaths[0];
 });
+
+// Where people usually keep clones, searched one level deep alongside folders of other saved projects.
+const commonCloneFolders = ['', 'Projects', 'projects', 'code', 'dev', 'repos', 'src', join('source', 'repos'), join('Documents', 'GitHub')];
+
+ipcMain.handle('find-repository', (_event, input: { workspaceRepository: string; searchRoots: string[] }) =>
+  findLinkedRepositories([...input.searchRoots, ...commonCloneFolders.map(folder => join(homedir(), folder))], input.workspaceRepository));
 
 ipcMain.handle('copy-text', (_event, value: string) => clipboard.writeText(value));
 

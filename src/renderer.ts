@@ -27,7 +27,8 @@ declare global {
       onWorkspaceConnected(callback: () => void): void;
       onWorkspaceRevision(callback: (revision: number) => void): void;
       onWorkspaceConnectionError(callback: (message: string) => void): void;
-      chooseRepository(): Promise<string | null>;
+      chooseRepository(input?: { workspaceRepository?: string; defaultPath?: string }): Promise<string | null>;
+      findRepository(input: { workspaceRepository: string; searchRoots: string[] }): Promise<string[]>;
       copyText(value: string): Promise<void>;
       notifyTeamChat(input: { title: string; body: string }): Promise<boolean>;
       onOpenTeamChatNotification(callback: () => void): void;
@@ -471,12 +472,35 @@ async function discoverHostedProjects(projectUrl: string, publishableKey: string
 
 async function chooseProjectFolder(project: SavedProject) {
   if (!project.repository) throw new Error('Open this project once to load its repository details.');
-  const selected = await window.consoleConnect.chooseRepository();
+  const selected = await window.consoleConnect.chooseRepository({ workspaceRepository: project.repository, defaultPath: savedCloneFolders()[0] });
   if (!selected) return null;
   const path = await window.consoleConnect.validateRepository({ repositoryPath: selected, workspaceRepository: project.repository });
+  return saveProjectFolder(project, path);
+}
+
+function saveProjectFolder(project: SavedProject, path: string) {
   project.localRepositoryPath = path;
   localStorage.setItem(projectsKey, JSON.stringify(projects));
   return path;
+}
+
+// Parent folders of clones saved for any project, most recent project first. Other clones usually sit beside them.
+function savedCloneFolders() {
+  const parents = projects.flatMap(item => {
+    const path = item.localRepositoryPath?.replace(/[\\/]+$/, '');
+    const cut = path ? Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) : -1;
+    return cut > 0 ? [path!.slice(0, cut)] : [];
+  });
+  return [...new Set(parents)];
+}
+
+// A single clone or fork already on this computer is used without asking; otherwise the person picks.
+async function findOrChooseProjectFolder(project: SavedProject) {
+  if (!project.repository) throw new Error('Open this project once to load its repository details.');
+  const found = await window.consoleConnect.findRepository({ workspaceRepository: project.repository, searchRoots: savedCloneFolders() }).catch(() => []);
+  const [only] = found;
+  if (only && found.length === 1) return saveProjectFolder(project, only);
+  return chooseProjectFolder(project);
 }
 
 // The saved folder only: reading project knowledge never opens a folder picker.
@@ -514,7 +538,7 @@ async function currentProjectFolder() {
   if (project.localRepositoryPath) {
     return window.consoleConnect.validateRepository({ repositoryPath: project.localRepositoryPath, workspaceRepository: snapshot.workspace.repository });
   }
-  return chooseProjectFolder(project);
+  return findOrChooseProjectFolder(project);
 }
 
 // Live counts for the Projects page, read from each project's own state when it answers.
