@@ -387,6 +387,23 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if ((await hostCall('/state')).tasks.find(task => task.id === liveTaskId)?.assigneeId !== hostState.memberId) throw new Error('Assign menu did not assign the task.');
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("document.querySelector('.assigned-by-me')?.innerText.includes('Waiting for approval')")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await evaluate("(() => { const text = document.querySelector('.assigned-by-me')?.innerText ?? ''; return text.includes('Waiting for approval') && text.includes('Live arrival') && text.includes('Alex'); })()"))) throw new Error('Assigned by me did not list the handed-out task.');
+  const liveRevision = (await hostCall('/state')).tasks.find(task => task.id === liveTaskId).revision;
+  const declined = await hostCall('/commands', { id: crypto.randomUUID(), type: 'decline-task', taskId: liveTaskId, revision: liveRevision, note: 'Busy this week.' });
+  if (declined.error) throw new Error(`Decline failed: ${declined.error}`);
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("document.querySelector('.assigned-by-me')?.innerText.includes('Declined by Alex')")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await evaluate("document.querySelector('.assigned-by-me')?.innerText.includes('Declined by Alex')"))) throw new Error('A declined task did not show as declined to its sender.');
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/assigned-by-me.png', Buffer.from(captured.data, 'base64'));
+  }
   // A tool proposes a review through console-connect; only the person's click sends it.
   const reviewTaskId = crypto.randomUUID();
   await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId: reviewTaskId, title: 'Expired invite retry', description: '', assigneeId: hostState.memberId });

@@ -115,6 +115,13 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
       await send(task.id, { type: 'assign-task', assigneeId: assignee.id } as CommandInput);
       return { text: `Assigned "${task.title}" to ${assignee.name}.`, data: { taskId: task.id, assigneeId: assignee.id } };
     }
+    if (verb === 'decline') {
+      const task = findTask(state, positional[0]);
+      if (task.assigneeId !== me.id) throw new CliError('Only the person it was assigned to can decline it.');
+      const note = named.note?.trim();
+      await send(task.id, { type: 'decline-task', ...(note ? { note } : {}) } as CommandInput);
+      return { text: `Declined "${task.title}".`, data: { taskId: task.id } };
+    }
     if (verb === 'claim') {
       const task = findTask(state, positional[0]);
       await send(task.id, { type: 'claim-task' } as CommandInput);

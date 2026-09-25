@@ -89,6 +89,7 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
   if (command.type === 'claim-task' || command.type === 'assign-task') {
     if (task.revision !== command.revision) throw new RequestError(409, 'This task changed. Refresh it before trying again.');
     if (task.status !== 'unassigned') throw new RequestError(409, 'This task is already assigned.');
+    delete task.declinedBy;
     if (command.type === 'claim-task') { task.assigneeId = actor.id; task.status = 'ready'; }
     else {
       if (!state.members.some(member => member.id === command.assigneeId)) throw new RequestError(400, 'Choose a workspace member.');
@@ -109,6 +110,14 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
     case 'acknowledge-decision':
       if (!task.pendingDecisionIds?.includes(command.decisionId)) throw new RequestError(409, 'This task has no pending acknowledgement for that decision.');
       task.pendingDecisionIds = task.pendingDecisionIds.filter(id => id !== command.decisionId);
+      break;
+    case 'decline-task':
+      if (task.status !== 'awaiting_approval' && task.status !== 'ready') throw new RequestError(409, 'Work has started, so this task can no longer be declined.');
+      task.status = 'unassigned';
+      task.assigneeId = null;
+      task.declinedBy = actor.id;
+      if (command.note) state.messages.push({ id: command.id, taskId: task.id, authorId: actor.id, body: command.note,
+        createdAt: new Date().toISOString(), version: 1, via: command.via });
       break;
     case 'approve-task':
       if (task.status !== 'awaiting_approval') throw new RequestError(409, 'This task is not awaiting your approval.');

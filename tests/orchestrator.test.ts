@@ -85,4 +85,13 @@ describe('console-connect commands in the app', () => {
     await expect(runCliCommand(['review', 'propose', 'aaaa', '--changes', '--note', 'x'], context, api)).rejects.toThrow('There is no submitted package to review.');
     await expect(runCliCommand(['review', 'propose', 'abbb', '--note', 'x'], context, api)).rejects.toThrow('Choose --accept or --changes.');
   });
+
+  test('task decline is for the person it was assigned to, with an optional note', async () => {
+    const { api, sent, state } = workspace();
+    state.tasks[1] = { ...state.tasks[1]!, assigneeId: blair, status: 'awaiting_approval' };
+    await runCliCommand(['task', 'decline', 'abbb', '--note', 'Out this week.'], context, api);
+    expect(sent[0]).toEqual({ taskId: invite, fields: { type: 'decline-task', note: 'Out this week.' } });
+    await expect(runCliCommand(['task', 'decline', 'aaaa'], context, api)).rejects.toThrow('Only the person it was assigned to can decline it.');
+  });
 });
+

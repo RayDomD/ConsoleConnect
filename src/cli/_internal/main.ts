@@ -10,8 +10,12 @@ const usage = `console-connect: work in your open Console Connect project from a
   task create --title <t> [--description <d>] [--assignee <name>]
   task assign <id> <name>
   task claim <id>
+  task decline <id> [--note <why>]
   task reply <id> <message>            Post in the task's discussion
   ask <message>                        Ask on the task this console belongs to
+  package show <id>                    A submitted package, or your own draft
+  review propose <id> --accept|--changes --note <text>
+                                       Prepare a review; it waits for your click in the app
 
 Add --json for machine-readable output. Task ids accept a unique prefix.
 Actions run as you, through your open app. Accepting work and approving decisions need a click in the app.`;

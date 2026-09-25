@@ -377,3 +377,24 @@ test('the owner sets who can assign, and the host enforces it for every path', a
   expect((await send(host.token, task(casey.memberId))).status).toBe(200);
   expect((await api(host.url, riley.token, '/state')).data.settings).toEqual({ assigningRule: 'owner' });
 });
+
+test('a recipient can decline an assignment, and the sender still sees it', async () => {
+  const host = await workspace();
+  const sam = await teammate(host.url, host.token, 'contributor');
+  const send = (token: string, command: object) => api(host.url, token, '/commands', { id: randomUUID(), ...command });
+  const taskId = randomUUID();
+  await send(host.token, { type: 'create-task', taskId, title: 'Invite copy', description: '', assigneeId: sam.memberId });
+  expect((await send(host.token, { type: 'decline-task', taskId, revision: 1 })).status).toBe(403);
+  expect((await send(sam.token, { type: 'decline-task', taskId, revision: 1, note: 'I am out this week.' })).status).toBe(200);
+  let state = (await api(host.url, host.token, '/state')).data;
+  const alex = state.memberId;
+  expect(state.tasks[0]).toMatchObject({ status: 'unassigned', assigneeId: null, assignedBy: alex, declinedBy: sam.memberId, revision: 2 });
+  expect(state.messages.at(-1)).toMatchObject({ taskId, authorId: sam.memberId, body: 'I am out this week.' });
+  expect((await send(sam.token, { type: 'decline-task', taskId, revision: 2 })).status).toBe(403);
+  expect((await send(host.token, { type: 'assign-task', taskId, revision: 2, assigneeId: sam.memberId })).status).toBe(200);
+  expect((await send(sam.token, { type: 'approve-task', taskId, revision: 3 })).status).toBe(200);
+  state = (await api(host.url, host.token, '/state')).data;
+  expect(state.tasks[0].declinedBy).toBeUndefined();
+  await send(sam.token, { type: 'start-task', taskId, revision: 4, tool: 'codex' });
+  expect((await send(sam.token, { type: 'decline-task', taskId, revision: 5 })).status).toBe(409);
+});

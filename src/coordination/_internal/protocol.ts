@@ -15,6 +15,8 @@ export interface Task {
   revision: number; tool?: Tool; createdAt: string; package?: WorkPackage; draftPackage?: WorkPackage;
   /** Who handed the task to its assignee, and the tool they acted through. */
   assignedBy?: string; via?: Tool;
+  /** Set when the recipient declined; cleared when the task is handed out again. */
+  declinedBy?: string;
   pullRequestStatus?: PullRequestStatus; pendingDecisionIds?: string[];
 }
 export interface WorkPackage {
@@ -45,6 +47,7 @@ export const commandSchema = z.discriminatedUnion('type', [
     title: z.string().trim().min(1).max(160), description: z.string().max(32000), assigneeId: identifier.nullable() }),
   z.object({ ...commandBase, type: z.literal('approve-task'), taskId: identifier, revision }),
   z.object({ ...commandBase, type: z.literal('set-assigning-rule'), rule: assigningRuleSchema }),
+  z.object({ ...commandBase, type: z.literal('decline-task'), taskId: identifier, revision, note: z.string().trim().max(8000).optional() }),
   z.object({ ...commandBase, type: z.literal('claim-task'), taskId: identifier, revision }),
   z.object({ ...commandBase, type: z.literal('assign-task'), taskId: identifier, revision, assigneeId: identifier }),
   z.object({ ...commandBase, type: z.literal('start-task'), taskId: identifier, revision, tool: toolSchema }),

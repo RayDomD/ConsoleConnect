@@ -78,6 +78,7 @@ let assignMenuOpen = false;
 let keyboardMove = false;
 // Focus mode (F) on the console tab: sidebar as dots, title in the top bar, the well edge to edge.
 let consoleFocus = false;
+let decliningTaskId: string | null = null;
 // Reviews a tool proposed through console-connect; each waits for the person's click (orchestrator ADR Q4).
 let reviewProposals: ReviewProposal[] = [];
 let editingProposal = false;
@@ -428,8 +429,12 @@ function taskActions(task: Task) {
     const menu = assignMenuOpen ? `<div class="menu" role="menu" aria-label="Teammates">${teammates.map(member => `<button class="menu-item" role="menuitem" data-action="assign" data-member="${escape(member.id)}"><span class="avatar" aria-hidden="true">${escape(member.name.slice(0, 1).toUpperCase())}</span>${escape(member.name)}</button>`).join('')}</div>` : '';
     return `<p class="action-heading">Nobody has this yet</p><div class="actions"><button data-action="claim">Claim task</button>${teammates.length ? `<span class="actions-or">or</span><div class="assign-menu"><button class="secondary" data-action="toggle-assign-menu" aria-haspopup="menu" aria-expanded="${assignMenuOpen}">Assign to teammate${chevronIcon}</button>${menu}</div>` : ''}</div>${canAssign() ? '' : '<p class="action-hint">Your team lets leads assign work. Suggest an assignee in the discussion.</p>'}`;
   }
-  if (mine && task.status === 'awaiting_approval') return '<button data-action="approve">Approve assignment</button>';
-  if (mine && task.status === 'ready') return '<button data-action="task-tab" data-tab="console">Open console</button>';
+  if (mine && (task.status === 'awaiting_approval' || task.status === 'ready')) {
+    const primary = task.status === 'ready' ? '<button data-action="task-tab" data-tab="console">Open console</button>' : '<button data-action="approve">Approve assignment</button>';
+    if (decliningTaskId !== task.id) return `<div class="actions">${primary}<button class="secondary" data-action="start-decline">Decline</button></div>`;
+    const sender = snapshot!.members.find(member => member.id === task.assignedBy)?.name;
+    return `<form id="decline-task"><label>${sender ? `Tell ${escape(sender)} why` : 'Say why'} (optional)<textarea name="note" maxlength="8000"></textarea></label><div class="actions"><button type="submit" class="secondary">Decline task</button><button type="button" class="text-button" data-action="cancel-decline">Keep it</button></div></form>`;
+  }
   if (mine && (task.status === 'running' || task.status === 'changes_requested')) {
     const draft = task.draftPackage ?? task.package;
     return `<form id="package"><label>Summary<input name="summary" required value="${escape(draft?.summary)}"></label><label>Branch, commit, or document<input name="sourceRef" required value="${escape(draft?.sourceRef ?? `console-connect/${task.id}`)}"></label><label>Pull request URL, if available<input name="pullRequestUrl" type="url" value="${escape(draft?.pullRequestUrl)}"></label><label>Deliverables, one per line<textarea name="deliverables">${escape(draft?.deliverables.join('\n'))}</textarea></label><label>Verification<textarea name="verification">${escape(draft?.verification)}</textarea></label><label>Open questions<textarea name="questions">${escape(draft?.questions)}</textarea></label><div class="actions"><button type="submit">Save draft</button>${task.draftPackage ? '<button type="button" data-action="submit">Submit for review</button>' : ''}</div></form>`;
@@ -453,7 +458,7 @@ const viaLabel = (tool: string) => `via ${escape(toolNames[tool] ?? tool)}`;
 
 // "Assigned by Blair via Codex" when someone other than the assignee handed the task out.
 function assignedByLine(task: Task) {
-  if (!task.assignedBy || task.assignedBy === task.assigneeId) return '';
+  if (!task.assignedBy || !task.assigneeId || task.assignedBy === task.assigneeId) return '';
   const name = snapshot?.members.find(member => member.id === task.assignedBy)?.name ?? 'a teammate';
   return `<span aria-hidden="true">·</span><span>Assigned by ${escape(name)}${task.via ? ` ${viaLabel(task.via)}` : ''}</span>`;
 }
@@ -475,6 +480,30 @@ function assigningRuleMarkup(owner: boolean) {
   return owner
     ? `<label class="assigning-rule">Who assigns work<select id="assigning-rule">${Object.entries(assigningRules).map(([id, label]) => `<option value="${id}" ${id === rule ? 'selected' : ''}>${label.short}</option>`).join('')}</select><small>${assigningRules[rule].full} Applies to every orchestrator too.</small></label>`
     : `<p class="assigning-rule">Who assigns work<small>${assigningRules[rule].full}</small></p>`;
+}
+
+// Everything this person handed out, grouped by where it stands (orchestrator ADR, "Assigned by me").
+const assignedGroups: Array<[string, (task: Task) => boolean]> = [
+  ['Needs your review', task => task.status === 'submitted'],
+  ['Declined', task => Boolean(task.declinedBy)],
+  ['Waiting for approval', task => task.status === 'awaiting_approval'],
+  ['Ready to start', task => task.status === 'ready'],
+  ['Running', task => task.status === 'running'],
+  ['Changes requested', task => task.status === 'changes_requested'],
+  ['Accepted, waiting to merge', task => task.status === 'accepted'],
+];
+
+function assignedByMeMarkup() {
+  const me = snapshot!.memberId;
+  const handedOut = snapshot!.tasks.filter(task => task.assignedBy === me && task.assigneeId !== me && task.status !== 'completed'
+    && (task.assigneeId !== null || Boolean(task.declinedBy)));
+  if (!handedOut.length) return '';
+  const name = (id: string | null | undefined) => escape(snapshot!.members.find(member => member.id === id)?.name ?? 'Teammate');
+  const groups = assignedGroups.map(([label, test]) => {
+    const tasks = handedOut.filter(test);
+    return tasks.length ? `<h3>${label}</h3>${tasks.map(task => `<button class="assigned-item" data-task="${task.id}"><strong>${escape(task.title)}</strong><small>${task.declinedBy ? `Declined by ${name(task.declinedBy)}` : name(task.assigneeId)}${task.via ? ` · ${viaLabel(task.via)}` : ''}</small></button>`).join('')}` : '';
+  }).join('');
+  return `<section class="assigned-by-me"><div class="section-head"><span class="section-label">Assigned by me</span><span class="section-count">${handedOut.length}</span></div>${groups}</section>`;
 }
 
 function taskBody(task: Task) {
@@ -714,6 +743,7 @@ function render() {
   if (notice && loadPending(localStorage).some(item => item.workspaceId === snapshot!.workspace.id && item.memberId === snapshot!.memberId)) {
     document.querySelector('.notice')?.insertAdjacentHTML('beforeend', '<button class="secondary" data-action="discard-pending">Discard oldest saved update</button>');
   }
+  document.querySelector('.right-rail')!.insertAdjacentHTML('beforeend', assignedByMeMarkup());
   document.querySelector('.right-rail')!.insertAdjacentHTML('beforeend', `<section class="decisions"><div class="section-head"><span class="section-label">Decisions</span><button class="text-button" data-action="propose-decision">${plusIcon}Propose</button></div>${snapshot.decisions.map(decision => `<div class="decision"><div class="decision-head"><strong>${escape(decision.title)}</strong><span class="decision-status decision-status-${decision.status}">${escape(decision.status.charAt(0).toUpperCase() + decision.status.slice(1))}</span></div><p>${escape(decision.body)}</p>${decision.documentCommit ? `<small>Commit ${escape(decision.documentCommit.slice(0, 12))}</small>` : ''}${decision.status === 'proposed' && me?.role !== 'contributor' ? decisionStep(decision.id, me?.role === 'owner') : ''}</div>`).join('')}</section>`);
   if (selected && taskTab === 'console' && !showWorkspaceChat) {
     if (consoleFocus) {
@@ -853,6 +883,12 @@ app.addEventListener('submit', async event => {
         body: { code: value('code'), name: value('name') } });
       if (result.status >= 400) throw new Error(result.data.error);
       connection = { mode: 'supabase', projectUrl, publishableKey, workspaceId: result.data.workspaceId };
+    } else if (form.id === 'decline-task') {
+      const task = snapshot!.tasks.find(item => item.id === decliningTaskId);
+      if (!task) throw new Error('Choose a task first.');
+      const note = value('note');
+      decliningTaskId = null;
+      await command(task, { type: 'decline-task', ...(note ? { note } : {}) });
     } else if (form.id === 'new-task') {
       await command(null, { type: 'create-task', taskId: crypto.randomUUID(), title: value('title'), description: value('description'), assigneeId: value('assigneeId') || null });
     } else if (form.id === 'package') {
@@ -1172,6 +1208,8 @@ app.addEventListener('click', async event => {
       render(); return;
     }
     if (action === 'proposal-confirm') { await confirmProposal(); return; }
+    if (action === 'start-decline') { decliningTaskId = task?.id ?? null; render(); document.querySelector<HTMLTextAreaElement>('#decline-task textarea')?.focus(); return; }
+    if (action === 'cancel-decline') { decliningTaskId = null; render(); return; }
     if (action === 'open-palette') { openPalette(paletteItems()); return; }
     if (action === 'focus-terminal') { terminal?.focus(); return; }
     if (action === 'toggle-console-focus') { consoleFocus = !consoleFocus; keyboardMove = true; render(); return; }
