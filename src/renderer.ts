@@ -1028,6 +1028,12 @@ function newIdeaMarkup() {
     + '<div class="actions"><button type="submit">Create idea</button><button type="button" class="text-button" data-action="cancel-idea">Cancel</button></div></form>';
 }
 
+// A new workspace starts with one worked example (guided path ADR Q24). It writes nothing until someone runs its playbook.
+function sampleIdea() {
+  return { type: 'create-idea', ideaId: crypto.randomUUID(), title: 'Add a welcome note to the README', size: 'feature', sample: true,
+    note: 'A sample to learn the path on. Open the orchestrator and run console-connect playbook talk with the id on this card to see how an idea is talked through. Delete it when you are done.' };
+}
+
 function ideasMarkup() {
   const ideas = snapshot!.ideas ?? [];
   const open = ideas.filter(idea => idea.stage !== 'done');
@@ -1521,6 +1527,7 @@ app.addEventListener('submit', async event => {
       localStorage.setItem('console-connect.connection', JSON.stringify(connection));
       startWorkspaceWatch();
       await refresh();
+      if ((form.id === 'host' || form.id === 'hosted-host') && snapshot?.revision === 1 && !snapshot.ideas?.length) await command(null, sampleIdea());
     }
   } catch (error) { notice = (error as Error).message; render(); }
 });

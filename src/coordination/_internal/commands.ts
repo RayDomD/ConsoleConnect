@@ -13,7 +13,7 @@ function applyIdeaCommand(state: WorkspaceState, actor: Member, command: IdeaCom
     if (ideas.some(item => item.id === command.ideaId)) throw new RequestError(409, 'This idea already exists.');
     ideas.push({ id: command.ideaId, title: command.title, note: command.note ?? '', size: command.size,
       stage: ideaPaths[command.size][0]!, createdBy: actor.id, createdAt: new Date().toISOString(), revision: 1,
-      skipped: [], documents: [], taskIds: [] });
+      skipped: [], documents: [], taskIds: [], ...(command.sample ? { sample: true } : {}) });
     return;
   }
   const idea = ideas.find(item => item.id === command.ideaId);

@@ -96,3 +96,12 @@ test('a task with blockers waits to start until each blocker is accepted', async
   expect((await send(host.token, { type: 'accept-package', taskId: schema, revision: 5 })).status).toBe(200);
   expect((await send(sam.token, { type: 'start-task', taskId: api, revision: 2, tool: 'codex' })).status).toBe(200);
 });
+
+test('the sample idea is marked and deletes like any other', async () => {
+  const { host, send, idea } = await team();
+  const ideaId = randomUUID();
+  await send(host.token, { type: 'create-idea', ideaId, title: 'Add a welcome note to the README', size: 'feature', sample: true });
+  expect(await idea(host.token, ideaId)).toMatchObject({ sample: true, stage: 'talk' });
+  expect((await send(host.token, { type: 'delete-idea', ideaId })).status).toBe(200);
+  expect(await idea(host.token, ideaId)).toBeUndefined();
+});

@@ -117,7 +117,9 @@ export const commandSchema = z.discriminatedUnion('type', [
     commitSha: z.string().regex(/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i) }),
   z.object({ ...commandBase, type: z.literal('acknowledge-decision'), taskId: identifier, revision, decisionId: identifier }),
   z.object({ ...commandBase, type: z.literal('create-idea'), ideaId: identifier,
-    title: z.string().trim().min(1).max(160), note: z.string().max(32000).optional(), size: ideaSizeSchema }),
+    title: z.string().trim().min(1).max(160), note: z.string().max(32000).optional(), size: ideaSizeSchema,
+    /** The worked example a new workspace starts with (guided path ADR Q24). */
+    sample: z.literal(true).optional() }),
   z.object({ ...commandBase, type: z.literal('update-idea'), ideaId: identifier, revision,
     title: z.string().trim().min(1).max(160).optional(), note: z.string().max(32000).optional(), size: ideaSizeSchema.optional() }),
   z.object({ ...commandBase, type: z.literal('mark-idea-ready'), ideaId: identifier, revision }),

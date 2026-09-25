@@ -131,6 +131,19 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if (!visible.includes('Smoke team') || !(await evaluate("Boolean(document.querySelector('[data-action=new-task]'))"))) throw new Error(`Host form failed: ${visible.slice(0, 300)}`);
+  // A new workspace starts with the sample idea (guided path 4.1f).
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("document.querySelector('.ideas-link .section-count')?.textContent === '1'")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  await evaluate("document.querySelector('[data-action=open-ideas]')?.click()");
+  if (!(await evaluate("(() => { const card = document.querySelector('.idea-card'); return Boolean(card) && card.querySelector('h2')?.textContent === 'Add a welcome note to the README' && card.querySelector('.office-pill')?.textContent === 'Sample' && card.querySelector('.idea-chip.on')?.textContent === 'Talk it through' && card.querySelector('[data-idea-size]')?.value === 'feature'; })()"))) {
+    throw new Error(`The new workspace did not show the sample idea: ${await evaluate("document.querySelector('.desk-content')?.innerText.slice(0, 400)")}`);
+  }
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/sample-idea.png', Buffer.from(captured.data, 'base64'));
+  }
   // Workspace-level actions must work before any task exists.
   await evaluate("document.querySelector('[data-action=open-orchestrator]').click()");
   if (!(await evaluate("document.querySelector('.breadcrumb-current')?.textContent === 'Orchestrator' && Boolean(document.querySelector('#orchestrator-tool'))"))) {
