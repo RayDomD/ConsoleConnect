@@ -15,6 +15,7 @@ import { receiveOAuthCallback } from './oauth-callback';
 import { consoleEnvironment, startCliServer, writeCliShims } from './cli-server';
 import { readProjectKnowledge, writeDraftProjectMap } from './project-knowledge';
 import { playbookPath, playbookStage } from './orchestrator';
+import { planDocsScaffold, scaffoldDocs } from './docs-scaffold';
 
 let hosted: Awaited<ReturnType<typeof startHost>> | null = null;
 type WorkspaceConnection = { url: string; token: string; mode?: 'local' } | {
@@ -346,6 +347,12 @@ ipcMain.handle('read-playbook', async (_event, input: { repositoryPath?: string;
   else return null;
   return readFile(join(root, playbookPath(stage)), 'utf8').catch(() => null);
 });
+
+// The docs scaffold (guided path ADR): a preview of what is missing, then a branch, push, and pull request.
+ipcMain.handle('docs-scaffold-plan', async (_event, input: { repositoryPath: string; workspaceRepository: string }) =>
+  planDocsScaffold(await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository)));
+ipcMain.handle('docs-scaffold', async (_event, input: { repositoryPath: string; workspaceRepository: string }) =>
+  scaffoldDocs(await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository)));
 
 ipcMain.handle('draft-project-map', async (_event, input: { repositoryPath: string; workspaceRepository: string }) =>
   writeDraftProjectMap(await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository)));

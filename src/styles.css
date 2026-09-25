@@ -477,3 +477,9 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .idea-preview{margin-top:10px}
 .idea-then{margin:0;font-size:12px;color:var(--color-muted)}
 .idea-resize{margin:0;font-size:12px;color:var(--color-warning)}
+.docs-setup{display:grid;gap:8px;margin-top:18px;padding:16px 18px;border-radius:12px;background:var(--color-surface);box-shadow:var(--lift-1)}
+.docs-setup h2{margin:0;font-size:20px}
+.docs-setup p{margin:0;font-size:13px;color:var(--color-muted);max-width:65ch}
+.docs-setup-list{display:flex;flex-wrap:wrap;gap:4px 10px}
+.docs-setup-list code{font:12px var(--font-mono);color:var(--color-text)}
+.docs-setup .actions{margin-top:4px}

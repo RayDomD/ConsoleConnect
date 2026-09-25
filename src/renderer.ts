@@ -51,6 +51,8 @@ declare global {
       projectKnowledge(input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; decisionIds: string[] }): Promise<{ source: string; mapText: string | null; decisionFiles: Record<string, string | null>; commits: Array<{ sha: string; subject: string; paths: string[]; pullRequests: string[] }>; commitsChecked: boolean } | null>;
       draftProjectMap(input: { repositoryPath: string; workspaceRepository: string }): Promise<string>;
       readPlaybook(input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; stage: string }): Promise<string | null>;
+      docsScaffoldPlan(input: { repositoryPath: string; workspaceRepository: string }): Promise<string[]>;
+      docsScaffold(input: { repositoryPath: string; workspaceRepository: string }): Promise<{ branch: string; added: string[]; pushed: boolean; pullRequestUrl: string | null }>;
       cliFolder(): Promise<string>;
       onCliRequest(callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; console?: string; taskId: string | null }) => void): void;
       replyToCli(value: { id: string; reply: { ok: true; text: string; data: unknown } | { ok: false; error: string } }): void;
@@ -101,6 +103,9 @@ let showIdeas = false;
 let ideaDraft: { title: string; note: string; size: IdeaSize } | null = null;
 let skippingIdeaId: string | null = null;
 let skipDraft = '';
+// The docs setup offer: shown to the Owner until they answer, once the project folder is known.
+const docsSetupKey = (workspaceId: string) => `console-connect.docs-setup.${workspaceId}`;
+let docsPlan: { workspaceId: string; missing: string[] | null } | null = null;
 const officeRefreshMs = 5_000;
 let renderedPresence = '';
 type OrchestratorSession = { tool: string; workspaceId: string; directory: string; startedAt: number; endedAt: number; active: boolean; output: string; lastOutputAt: number };
@@ -1034,13 +1039,32 @@ function sampleIdea() {
     note: 'A sample to learn the path on. Open the orchestrator and run console-connect playbook talk with the id on this card to see how an idea is talked through. Delete it when you are done.' };
 }
 
+function docsSetupMarkup() {
+  const workspaceId = snapshot!.workspace.id;
+  const owner = snapshot!.members.find(member => member.id === snapshot!.memberId)?.role === 'owner';
+  const folder = savedProjectFolder();
+  let answered = true;
+  try { answered = Boolean(localStorage.getItem(docsSetupKey(workspaceId))); } catch { /* storage unavailable: do not offer */ }
+  if (!owner || answered || !folder) return '';
+  if (docsPlan?.workspaceId !== workspaceId) {
+    docsPlan = { workspaceId, missing: null };
+    window.consoleConnect.docsScaffoldPlan({ repositoryPath: folder, workspaceRepository: snapshot!.workspace.repository })
+      .then(missing => { if (docsPlan?.workspaceId === workspaceId) { docsPlan.missing = missing; if (showIdeas) render(); } }, () => {});
+  }
+  if (!docsPlan.missing?.length) return '';
+  return `<section class="docs-setup" aria-labelledby="docs-setup-title"><h2 id="docs-setup-title">Set up the project docs?</h2>`
+    + '<p>Console Connect will add the missing folders and a project map on a branch, and open a pull request for you to review. Nothing existing is overwritten.</p>'
+    + `<p class="docs-setup-list">${docsPlan.missing.map(path => `<code>+ ${escape(path)}</code>`).join(' ')}</p>`
+    + '<div class="actions"><button data-action="docs-setup" data-choice="create">Create docs PR</button><button class="secondary" data-action="docs-setup" data-choice="own">Use my own structure</button><button class="text-button" data-action="docs-setup" data-choice="skip">Skip</button></div></section>';
+}
+
 function ideasMarkup() {
   const ideas = snapshot!.ideas ?? [];
   const open = ideas.filter(idea => idea.stage !== 'done');
   const done = ideas.filter(idea => idea.stage === 'done');
   const empty = '<p class="rail-meta">No ideas yet. Add one when the team has something to build. Its size sets the stages it goes through, and plain tasks still work without one.</p>';
   return `<div class="office-head"><div><h1>Ideas</h1><div class="meta"><span>${open.length} open</span>${done.length ? `<span aria-hidden="true">·</span><span>${done.length} done</span>` : ''}</div></div>${ideaDraft ? '' : '<button data-action="new-idea">New idea</button>'}</div>`
-    + `${ideaDraft ? newIdeaMarkup() : ''}<div class="idea-list">${open.map(ideaCardMarkup).join('') || (ideaDraft ? '' : empty)}</div>`
+    + `${docsSetupMarkup()}${ideaDraft ? newIdeaMarkup() : ''}<div class="idea-list">${open.map(ideaCardMarkup).join('') || (ideaDraft ? '' : empty)}</div>`
     + `${done.length ? `<section class="office-room"><div class="section-head"><h2 class="section-label">Done</h2><span class="section-count">${done.length}</span></div><div class="idea-list">${done.map(ideaCardMarkup).join('')}</div></section>` : ''}`;
 }
 
@@ -1787,6 +1811,23 @@ app.addEventListener('click', async event => {
     if (action === 'open-ideas') { showIdeas = true; showOffice = false; showOrchestrator = false; showWorkspaceChat = false; render(); return; }
     if (action === 'new-idea') { ideaDraft = { title: '', note: '', size: 'feature' }; render(); document.querySelector<HTMLInputElement>('#new-idea input[name=title]')?.focus(); return; }
     if (action === 'cancel-idea') { ideaDraft = null; render(); return; }
+    if (action === 'docs-setup' && snapshot) {
+      const workspaceId = snapshot.workspace.id;
+      const choice = button.dataset.choice ?? 'skip';
+      if (choice === 'create') {
+        const folder = savedProjectFolder();
+        if (!folder) return;
+        button.disabled = true;
+        notice = 'Setting up the project docs on a branch…'; noticeActions = ''; render();
+        const result = await window.consoleConnect.docsScaffold({ repositoryPath: folder, workspaceRepository: snapshot.workspace.repository });
+        notice = result.pullRequestUrl ? `Opened a pull request with the project docs: ${result.pullRequestUrl}`
+          : result.pushed ? `Pushed ${result.branch}. Open a pull request for it on GitHub.`
+            : result.added.length ? `Committed the project docs on ${result.branch}. Push it when you are ready.` : 'The project already has every docs folder.';
+      }
+      try { localStorage.setItem(docsSetupKey(workspaceId), choice); } catch { /* the offer returns next time */ }
+      docsPlan = null;
+      render(); return;
+    }
     if (action === 'start-skip-idea') { skippingIdeaId = button.dataset.idea!; skipDraft = ''; render(); document.querySelector<HTMLInputElement>('#skip-idea input')?.focus(); return; }
     if (action === 'cancel-skip-idea') { skippingIdeaId = null; render(); return; }
     const idea = button.dataset.idea ? snapshot?.ideas?.find(item => item.id === button.dataset.idea) : undefined;
