@@ -9,7 +9,7 @@ summary: Contracts and tickets for roadmap Phase 2 (2.1–2.13), from the orches
 
 ## Status & Progress Summary
 
-Spec written 2026-09-25 from `docs/adr/2026-09-25-orchestrator.md`. Tickets below map one-to-one to roadmap items 2.1–2.13. Progress is tracked per ticket.
+Spec written 2026-09-25 from `docs/adr/2026-09-25-orchestrator.md`. Tickets below map one-to-one to roadmap items 2.1–2.13. Done: 2.1–2.7. Next: 2.8 package draft.
 
 ## Context
 
@@ -95,3 +95,4 @@ Typecheck, vitest (domain, CLI parsing, brief, readiness, event policy), `node s
 ## Changelog
 
 - 2026-09-25: Spec written from the orchestrator ADR; tickets 2.1–2.13 defined. Next: 2.1.
+- 2026-09-25: 2.1–2.7 built. Pipe socket path and main-as-relay recorded. Readiness markers taken from real Claude Code and Codex idle screens. Orchestrator console sharing deferred (sharing is keyed to tasks).
