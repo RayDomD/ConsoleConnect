@@ -270,7 +270,7 @@ try {
   }
   const press = async (key, modifiers = 0) => {
     const code = /^[0-9]$/.test(key) ? `Digit${key}` : key.length === 1 ? `Key${key.toUpperCase()}` : key;
-    const windowsVirtualKeyCode = key === 'Enter' ? 13 : key.toUpperCase().charCodeAt(0);
+    const windowsVirtualKeyCode = { Enter: 13, Escape: 27 }[key] ?? key.toUpperCase().charCodeAt(0);
     await call('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode, modifiers, ...(key.length === 1 && !modifiers ? { text: key } : key === 'Enter' ? { text: '\r' } : {}) });
     await call('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode, modifiers });
   };
@@ -302,6 +302,10 @@ try {
   await press('Enter');
   if (await evaluate("Boolean(document.querySelector('.palette'))")) throw new Error('Choosing a palette item did not close it.');
   if (!(await evaluate("document.querySelector('.task-list .active')?.textContent.includes('Review login')"))) throw new Error('Palette did not jump to the task.');
+  await evaluate("document.querySelector('[data-action=open-palette]').click()");
+  if (!(await evaluate("document.activeElement === document.querySelector('.palette-input')"))) throw new Error('The Jump button did not open the palette.');
+  await press('Escape');
+  if (await evaluate("Boolean(document.querySelector('.palette'))")) throw new Error('Escape did not close the palette.');
   const taskId = crypto.randomUUID();
   const hostState = await hostCall('/state');
   await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId,

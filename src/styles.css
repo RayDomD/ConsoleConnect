@@ -218,14 +218,14 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .project-row .inline-link{padding:0;font-size:inherit;font-weight:600;color:var(--color-text);text-decoration:underline;text-underline-offset:3px}
 
 /* Console workspace: docked well with a session strip (1.10) */
-.session-strip{display:flex;align-items:center;flex-wrap:wrap;gap:6px 12px;min-height:44px;padding:6px 10px 6px 14px;background:var(--color-surface);box-shadow:inset 0 -1px 0 var(--color-border);font-size:12px;color:var(--color-muted)}
+.session-strip{display:flex;align-items:center;flex-wrap:wrap;gap:6px 10px;min-height:44px;padding:6px 10px 6px 14px;background:var(--color-surface);box-shadow:inset 0 -1px 0 var(--color-border);font-size:12px;color:var(--color-muted)}
 .session-tool{font-weight:600;color:var(--color-text)}
 .session-branch{font:12px var(--font-mono);color:var(--color-text)}
 .session-spacer{flex:1}
 .session-strip .text-button{padding:6px 8px;font-size:12px;font-weight:500}
 .session-strip .text-button:hover{background:var(--color-canvas)}
 .session-strip .text-button[aria-pressed=true]{background:var(--color-selection);color:var(--color-text)}
-.session-strip .console-launch select{width:150px;padding:6px 8px;font-size:13px}
+.session-strip .console-launch select{width:124px;padding:6px 8px;font-size:13px}
 .session-strip .console-launch button{padding:7px 12px;font-size:12px}
 .console-workspace #terminal{padding:10px 14px}
 @media(min-width:901px){
@@ -253,6 +253,22 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .file-removed{color:var(--color-danger)}
 .rail-draft{width:100%;padding:9px 12px;font-size:13px}
 .session-strip kbd{margin-left:6px}
+
+/* The strip stays one line on desktop; the branch truncates first (its tooltip keeps the full name) */
+@media(min-width:901px){
+.session-strip{flex-wrap:nowrap}
+.session-strip>*{flex:none;white-space:nowrap}
+.session-strip .session-branch{flex:0 1 auto;min-width:0;display:inline-flex}
+.session-branch-prefix{min-width:24px;overflow:hidden;text-overflow:ellipsis}
+.session-strip .session-spacer{flex:1 1 0}
+}
+
+/* Stop ends the tool, so it reads apart from the layout toggles (critique P2) */
+.session-strip .session-stop{color:var(--color-danger)}
+.session-strip .session-stop:hover{background:color-mix(in oklab,var(--color-danger) 8%,var(--color-surface));color:var(--color-danger)}
+.session-toggles{display:inline-flex;gap:6px;padding-left:10px;box-shadow:inset 1px 0 0 var(--color-border)}
+.topbar-jump kbd{margin-left:6px}
+.topbar-jump kbd+kbd{margin-left:3px}
 
 /* Needs-input bar: inferred from quiet output until the readiness signal exists (1.10) */
 .needs-input{display:flex;align-items:center;gap:10px;padding:6px 10px 6px 14px;background:color-mix(in oklab,var(--color-warning) 10%,var(--color-surface));box-shadow:inset 0 1px 0 color-mix(in oklab,var(--color-warning) 22%,transparent);color:var(--color-warning);font-size:13px;font-weight:500}
