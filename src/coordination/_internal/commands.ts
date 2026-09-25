@@ -12,6 +12,16 @@ function checkAssigningRule(state: WorkspaceState, actor: Member) {
 
 export function applyCommand(state: WorkspaceState, actor: Member, command: Command) {
   if (command.via && clickOnly.has(command.type)) throw new RequestError(403, 'This needs a click in Console Connect.');
+  // Informational: it does not bump the task revision, so it never makes the worker's own commands conflict.
+  if (command.type === 'report-session') {
+    const task = state.tasks.find(item => item.id === command.taskId);
+    if (!task) throw new RequestError(404, 'Task not found.');
+    if (task.assigneeId !== actor.id) throw new RequestError(403, 'Only the person working on this task can report its session.');
+    if (task.status !== 'running' && task.status !== 'changes_requested') throw new RequestError(409, 'This task has no running session.');
+    if (command.state === 'working') delete task.stall;
+    else task.stall = { reason: command.state, at: new Date().toISOString() };
+    return;
+  }
   if (command.type === 'set-assigning-rule') {
     if (actor.role !== 'owner') throw new RequestError(403, 'Only the Owner can change who assigns work.');
     state.settings = { ...state.settings, assigningRule: command.rule };
@@ -130,6 +140,7 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
       break;
     case 'save-package':
       if (task.status !== 'running' && task.status !== 'changes_requested') throw new RequestError(409, 'This task is not ready for a draft.');
+      delete task.stall;
       task.draftPackage = { summary: command.summary, sourceRef: command.sourceRef, pullRequestUrl: command.pullRequestUrl,
         deliverables: command.deliverables,
         verification: command.verification, questions: command.questions };
@@ -138,6 +149,7 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
       if (task.pendingDecisionIds?.length) throw new RequestError(409, 'Acknowledge changed decisions before submitting work.');
       if ((task.status !== 'running' && task.status !== 'changes_requested') || !task.draftPackage) throw new RequestError(409, 'Save a draft before submitting it.');
       task.status = 'submitted';
+      delete task.stall;
       task.package = task.draftPackage;
       delete task.draftPackage;
       delete task.pullRequestStatus;

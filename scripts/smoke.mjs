@@ -120,6 +120,11 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if (!visible.includes('Smoke team') || !(await evaluate("Boolean(document.querySelector('[data-action=new-task]'))"))) throw new Error(`Host form failed: ${visible.slice(0, 300)}`);
+  // Workspace-level actions must work before any task exists.
+  await evaluate("document.querySelector('[data-action=open-orchestrator]').click()");
+  if (!(await evaluate("document.querySelector('.breadcrumb-current')?.textContent === 'Orchestrator' && Boolean(document.querySelector('#orchestrator-tool'))"))) {
+    throw new Error('The orchestrator did not open in a workspace without tasks.');
+  }
   await evaluate("document.querySelector('[data-action=disconnect]').click()");
   if (!(await evaluate("Boolean(document.querySelector('[data-action=open-project]'))"))) throw new Error('Dashboard did not retain the project.');
   for (let attempt = 0; attempt < 30; attempt++) {
@@ -434,6 +439,7 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if (!(await evaluate("document.querySelector('.assigned-by-me')?.innerText.includes('Declined by Alex')"))) throw new Error('A declined task did not show as declined to its sender.');
+  if (!(await evaluate("document.querySelector('.orchestrator-link .chat-count')?.textContent === '1'"))) throw new Error(`The decline was not queued for the orchestrator: ${await evaluate("document.querySelector('.orchestrator-link .chat-count')?.title")}`);
   if (process.argv.includes('--screenshot')) {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/assigned-by-me.png', Buffer.from(captured.data, 'base64'));
@@ -491,15 +497,15 @@ try {
   const incomingMessageId = crypto.randomUUID();
   await hostCall('/commands', { id: incomingMessageId, type: 'post-message', body: 'Can someone test invitation expiry?' });
   for (let attempt = 0; attempt < 30; attempt++) {
-    if (await evaluate("Boolean(document.querySelector('.chat-link .chat-count'))")) break;
+    if (await evaluate("Boolean(document.querySelector('.chat-link[data-action=workspace-chat] .chat-count'))")) break;
     await new Promise(resolve => setTimeout(resolve, 200));
   }
-  if (!(await evaluate("Boolean(document.querySelector('.chat-link .chat-count') && document.querySelector('.chat-toast'))"))) {
-    const state = await evaluate("JSON.stringify({ badge: document.querySelector('.chat-link .chat-count')?.textContent, toast: document.querySelector('.chat-toast')?.textContent, visible: document.body.innerText.slice(-700) })");
+  if (!(await evaluate("Boolean(document.querySelector('.chat-link[data-action=workspace-chat] .chat-count') && document.querySelector('.chat-toast'))"))) {
+    const state = await evaluate("JSON.stringify({ badge: document.querySelector('.chat-link[data-action=workspace-chat] .chat-count')?.textContent, toast: document.querySelector('.chat-toast')?.textContent, visible: document.body.innerText.slice(-700) })");
     throw new Error(`Incoming team message did not show an unread badge and preview: ${state}`);
   }
   await evaluate("document.querySelector('.topbar [data-action=open-chat-drawer]').click()");
-  if (!(await evaluate("Boolean(document.querySelector('.chat-drawer') && !document.querySelector('.chat-link .chat-count'))"))) {
+  if (!(await evaluate("Boolean(document.querySelector('.chat-drawer') && !document.querySelector('.chat-link[data-action=workspace-chat] .chat-count'))"))) {
     throw new Error('Chat drawer did not open and mark messages read.');
   }
   if (process.argv.includes('--screenshot')) {

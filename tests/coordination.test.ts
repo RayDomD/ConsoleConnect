@@ -398,3 +398,24 @@ test('a recipient can decline an assignment, and the sender still sees it', asyn
   await send(sam.token, { type: 'start-task', taskId, revision: 4, tool: 'codex' });
   expect((await send(sam.token, { type: 'decline-task', taskId, revision: 5 })).status).toBe(409);
 });
+
+test('the worker app reports a stalled session without disturbing the task revision', async () => {
+  const host = await workspace();
+  const sam = await teammate(host.url, host.token, 'contributor');
+  const send = (token: string, command: object) => api(host.url, token, '/commands', { id: randomUUID(), ...command });
+  const taskId = randomUUID();
+  await send(host.token, { type: 'create-task', taskId, title: 'Invite copy', description: '', assigneeId: sam.memberId });
+  expect((await send(sam.token, { type: 'report-session', taskId, state: 'needs_input' })).status).toBe(409);
+  await send(sam.token, { type: 'approve-task', taskId, revision: 1 });
+  await send(sam.token, { type: 'start-task', taskId, revision: 2, tool: 'claude' });
+  expect((await send(host.token, { type: 'report-session', taskId, state: 'needs_input' })).status).toBe(403);
+  expect((await send(sam.token, { type: 'report-session', taskId, state: 'needs_input', via: 'claude' })).status).toBe(200);
+  let task = (await api(host.url, host.token, '/state')).data.tasks[0];
+  expect(task).toMatchObject({ revision: 3, stall: { reason: 'needs_input' } });
+  expect((await send(sam.token, { type: 'save-package', taskId, revision: 3, summary: 'Copy', sourceRef: 'main', deliverables: [], verification: '', questions: '' })).status).toBe(200);
+  task = (await api(host.url, host.token, '/state')).data.tasks[0];
+  expect(task.stall).toBeUndefined();
+  await send(sam.token, { type: 'report-session', taskId, state: 'exited' });
+  await send(sam.token, { type: 'report-session', taskId, state: 'working' });
+  expect((await api(host.url, host.token, '/state')).data.tasks[0].stall).toBeUndefined();
+});

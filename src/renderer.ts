@@ -9,7 +9,7 @@ import { invitationLink, parseInvitationLink } from './invitations';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { consoleReadiness, needsInput } from './console-state';
-import { runCliCommand, taskBrief, type PackageDraft, type ReviewProposal, type WorkspaceApi } from './orchestrator';
+import { detectEvents, eventLine, runCliCommand, taskBrief, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -93,6 +93,45 @@ let orchestratorTerminal: Terminal | null = null;
 let orchestratorFit: FitAddon | null = null;
 const cliActivity: Array<{ at: number; text: string; tool?: string }> = [];
 const cliActivityLimit = 8;
+// Updates for the orchestrator (orchestrator ADR Q8): typed into its console once it is ready, never sent.
+// Anything that arrives before the person presses Enter waits and joins the next line.
+let orchestratorEvents: OrchestratorEvent[] = [];
+const orchestratorEventLimit = 20;
+let orchestratorTypedAt = 0;
+let orchestratorLastInputAt = 0;
+
+function queueOrchestratorEvents(events: OrchestratorEvent[]) {
+  if (!events.length) return;
+  orchestratorEvents = [...orchestratorEvents, ...events].slice(-orchestratorEventLimit);
+}
+
+function typeOrchestratorEvents() {
+  if (!orchestrator?.active || !orchestratorEvents.length || orchestrator.workspaceId !== snapshot?.workspace.id) return;
+  if (orchestratorTypedAt > orchestratorLastInputAt) return;
+  if (consoleReadiness({ tool: orchestrator.tool, output: orchestrator.output, lastOutputAt: orchestrator.lastOutputAt, now: Date.now() }) !== 'ready') return;
+  window.consoleConnect.terminalWrite({ taskId: orchestratorKey, data: eventLine(orchestratorEvents) });
+  orchestratorEvents = [];
+  orchestratorTypedAt = Date.now();
+  render();
+}
+
+// Worker side of stalls: after this long waiting on its owner, the session is reported so the orchestrator hears.
+const stallAfterMs = 120_000;
+let waitingSince = 0;
+let stallReported = false;
+
+function reportSessionState() {
+  const task = snapshot?.tasks.find(item => item.id === terminalTaskId);
+  if (!task || !terminalSessionActive || !['running', 'changes_requested'].includes(task.status)) return;
+  const report = (state: 'needs_input' | 'working') => void command(null, { type: 'report-session', taskId: task.id, state, ...(terminalTool ? { via: terminalTool } : {}) }).catch(() => {});
+  if (localSessionNeedsInput()) {
+    waitingSince ||= Date.now();
+    if (!stallReported && Date.now() - waitingSince >= stallAfterMs) { stallReported = true; report('needs_input'); }
+  } else {
+    waitingSince = 0;
+    if (stallReported && localReadiness() === 'working') { stallReported = false; report('working'); }
+  }
+}
 // Reads are logged as what was read; changes log the app's own confirmation line.
 function activityLabel(argv: string[], text: string) {
   const reads: Record<string, string> = { 'brief': 'Read the brief', 'task list': 'Listed open tasks', 'task show': 'Read a task', 'package show': 'Read a work package' };
@@ -393,6 +432,7 @@ async function refreshOnce() {
     if (!snapshot || next.revision >= snapshot.revision) {
       const shouldRender = changed || next.revision !== snapshot?.revision || !snapshot;
       observeTeamMessages(next);
+      queueOrchestratorEvents(detectEvents(snapshot?.workspace.id === next.workspace.id && snapshot.memberId === next.memberId ? snapshot : null, next));
       snapshot = next;
       rememberProject(active, next);
       if (shouldRender) render();
@@ -609,6 +649,8 @@ setInterval(() => {
   const elapsed = document.querySelector('.session-elapsed');
   if (elapsed && terminalSessionActive) elapsed.textContent = elapsedLabel();
   typeBriefWhenReady();
+  typeOrchestratorEvents();
+  reportSessionState();
   // Re-render only when the inferred state flips, so the terminal and any focus stay put.
   if (localSessionNeedsInput() !== terminalNeedsInput) { terminalNeedsInput = !terminalNeedsInput; render(); }
 }, 1000);
@@ -681,7 +723,11 @@ function mountOrchestratorTerminal() {
     orchestratorTerminal.loadAddon(orchestratorFit);
     orchestratorTerminal.open(container);
     orchestratorTerminal.write(orchestrator.output);
-    orchestratorTerminal.onData(data => { if (orchestrator?.active) window.consoleConnect.terminalWrite({ taskId: orchestratorKey, data }); });
+    orchestratorTerminal.onData(data => {
+      if (!orchestrator?.active) return;
+      if (!/^\x1b\[[IO]$/.test(data)) orchestratorLastInputAt = Date.now();
+      window.consoleConnect.terminalWrite({ taskId: orchestratorKey, data });
+    });
   }
   orchestratorTerminal.options.theme = loadTheme().terminal;
   orchestratorFit?.fit();
@@ -799,7 +845,7 @@ function render() {
     invite.insertAdjacentHTML('beforebegin', '<p class="rail-note">Hosting on this computer only. Connect a private VPN and restart Console Connect to invite teammates.</p>');
   }
   document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link ${showWorkspaceChat ? 'active' : ''}" data-action="workspace-chat">Team chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button>`);
-  document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link orchestrator-link ${showOrchestrator ? 'active' : ''}" data-action="open-orchestrator">Orchestrator${orchestrator?.active && orchestrator.workspaceId === snapshot.workspace.id ? '<i class="status-dot status-running" aria-label="running"></i>' : ''}</button>`);
+  document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link orchestrator-link ${showOrchestrator ? 'active' : ''}" data-action="open-orchestrator">Orchestrator${orchestratorEvents.length ? `<span class="chat-count" aria-label="${orchestratorEvents.length} updates waiting" title="${escape(eventLine(orchestratorEvents))}">${orchestratorEvents.length}</span>` : orchestrator?.active && orchestrator.workspaceId === snapshot.workspace.id ? '<i class="status-dot status-running" aria-label="running"></i>' : ''}</button>`);
   if (showWorkspaceChat) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
     document.querySelector('.desk-content')!.classList.add('chat-page');
@@ -1229,6 +1275,7 @@ app.addEventListener('click', async event => {
       snapshot = null;
       selectedTaskId = null;
       showWorkspaceChat = false; showChatDrawer = false; showOrchestrator = false;
+      orchestratorEvents = [];
       view = 'review';
       notice = '';
       localStorage.setItem('console-connect.connection', JSON.stringify(connection));
@@ -1248,6 +1295,7 @@ app.addEventListener('click', async event => {
       stopHostedWatch?.(); stopHostedWatch = null;
       window.consoleConnect.stopWatchingWorkspace();
       connection = null; snapshot = null; view = 'dashboard'; notice = ''; currentInvitationLink = '';
+      orchestratorEvents = [];
       projectSummariesLoadedAt = 0;
       showChatDrawer = false; showWorkspaceChat = false; chatToast = null;
       localStorage.removeItem('console-connect.connection'); render(); return;
@@ -1294,6 +1342,36 @@ app.addEventListener('click', async event => {
       render(); return;
     }
     if (action === 'copy-invitation') { await window.consoleConnect.copyText(currentInvitationLink); notice = 'Invitation link copied.'; render(); return; }
+    // Workspace-level actions: they work before any task exists.
+    if (action === 'copy-cli-folder') { await window.consoleConnect.copyText(cliFolderPath); notice = 'Folder copied.'; render(); return; }
+    if (action === 'open-orchestrator') {
+      if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
+      showOrchestrator = true; showWorkspaceChat = false; render(); return;
+    }
+    if (action === 'start-orchestrator') {
+      const repositoryPath = await currentProjectFolder();
+      if (!repositoryPath) return;
+      const tool = document.querySelector<HTMLSelectElement>('#orchestrator-tool')!.value;
+      orchestratorTerminal?.dispose(); orchestratorTerminal = null; orchestratorFit = null;
+      const started = { tool, workspaceId: snapshot!.workspace.id, directory: '', startedAt: Date.now(), endedAt: 0, active: true, output: '', lastOutputAt: Date.now() };
+      orchestrator = started;
+      try { started.directory = (await window.consoleConnect.runOrchestrator({ repositoryPath, workspaceRepository: snapshot!.workspace.repository, tool })).directory; }
+      catch (error) { orchestrator = null; throw error; }
+      render(); return;
+    }
+    if (action === 'stop-orchestrator') {
+      if (confirm('Stop the orchestrator console? The tool ends.')) window.consoleConnect.terminalKill({ taskId: orchestratorKey });
+      return;
+    }
+    if (action === 'proposal-dismiss') { reviewProposals.shift(); editingProposal = false; render(); return; }
+    if (action === 'proposal-edit') { editingProposal = true; render(); document.querySelector<HTMLTextAreaElement>('#proposal-note')?.focus(); return; }
+    if (action === 'proposal-switch') {
+      const proposal = reviewProposals[0];
+      if (proposal) { proposal.note = document.querySelector<HTMLTextAreaElement>('#proposal-note')?.value ?? proposal.note; proposal.action = proposal.action === 'accept' ? 'changes' : 'accept'; }
+      render(); return;
+    }
+    if (action === 'proposal-confirm') { await confirmProposal(); return; }
+    if (action === 'open-palette') { openPalette(paletteItems()); return; }
     if (!task) return;
     if (action === 'toggle-terminal-sharing') {
       await window.consoleConnect.setTerminalSharing({ taskId: task.id, enabled: !snapshot!.sharedTerminalTaskIds?.includes(task.id) });
@@ -1342,7 +1420,6 @@ app.addEventListener('click', async event => {
       catch (error) { terminalTaskId = null; terminalSessionActive = false; throw error; }
       await refresh();
     }
-    if (action === 'copy-cli-folder') { await window.consoleConnect.copyText(cliFolderPath); notice = 'Folder copied.'; render(); return; }
     if (action === 'draft-package' || action === 'edit-package') {
       taskTab = 'package';
       const draft = task.draftPackage;
@@ -1354,36 +1431,8 @@ app.addEventListener('click', async event => {
       render(); document.querySelector<HTMLTextAreaElement>('#package-card textarea')?.focus(); return;
     }
     if (action === 'cancel-package-edit') { packageEditing = null; render(); return; }
-    if (action === 'open-orchestrator') {
-      if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
-      showOrchestrator = true; showWorkspaceChat = false; render(); return;
-    }
-    if (action === 'start-orchestrator') {
-      const repositoryPath = await currentProjectFolder();
-      if (!repositoryPath) return;
-      const tool = document.querySelector<HTMLSelectElement>('#orchestrator-tool')!.value;
-      orchestratorTerminal?.dispose(); orchestratorTerminal = null; orchestratorFit = null;
-      const started = { tool, workspaceId: snapshot!.workspace.id, directory: '', startedAt: Date.now(), endedAt: 0, active: true, output: '', lastOutputAt: Date.now() };
-      orchestrator = started;
-      try { started.directory = (await window.consoleConnect.runOrchestrator({ repositoryPath, workspaceRepository: snapshot!.workspace.repository, tool })).directory; }
-      catch (error) { orchestrator = null; throw error; }
-      render(); return;
-    }
-    if (action === 'stop-orchestrator') {
-      if (confirm('Stop the orchestrator console? The tool ends.')) window.consoleConnect.terminalKill({ taskId: orchestratorKey });
-      return;
-    }
-    if (action === 'proposal-dismiss') { reviewProposals.shift(); editingProposal = false; render(); return; }
-    if (action === 'proposal-edit') { editingProposal = true; render(); document.querySelector<HTMLTextAreaElement>('#proposal-note')?.focus(); return; }
-    if (action === 'proposal-switch') {
-      const proposal = reviewProposals[0];
-      if (proposal) { proposal.note = document.querySelector<HTMLTextAreaElement>('#proposal-note')?.value ?? proposal.note; proposal.action = proposal.action === 'accept' ? 'changes' : 'accept'; }
-      render(); return;
-    }
-    if (action === 'proposal-confirm') { await confirmProposal(); return; }
     if (action === 'start-decline') { decliningTaskId = task?.id ?? null; render(); document.querySelector<HTMLTextAreaElement>('#decline-task textarea')?.focus(); return; }
     if (action === 'cancel-decline') { decliningTaskId = null; render(); return; }
-    if (action === 'open-palette') { openPalette(paletteItems()); return; }
     if (action === 'focus-terminal') { terminal?.focus(); return; }
     if (action === 'toggle-console-focus') { consoleFocus = !consoleFocus; keyboardMove = true; render(); return; }
     if (action === 'toggle-session-rail') {
@@ -1507,8 +1556,13 @@ window.consoleConnect.onTerminalExit(event => {
     return;
   }
   if (event.taskId !== terminalTaskId) return;
+  const ended = snapshot?.tasks.find(item => item.id === terminalTaskId);
+  if (ended && ['running', 'changes_requested'].includes(ended.status) && !ended.draftPackage) {
+    void command(null, { type: 'report-session', taskId: ended.id, state: 'exited', ...(terminalTool ? { via: terminalTool } : {}) }).catch(() => {});
+  }
   terminalSessionActive = false;
   terminalEndedAt = Date.now();
+  waitingSince = 0; stallReported = false;
   const line = `\r\nProcess exited (${event.exitCode}).\r\n`;
   terminalOutput += line;
   if (terminalRenderSource === 'local') terminal?.write(line);

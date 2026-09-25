@@ -17,6 +17,8 @@ export interface Task {
   assignedBy?: string; via?: Tool;
   /** Set when the recipient declined; cleared when the task is handed out again. */
   declinedBy?: string;
+  /** Reported by the worker's app when its session waits on the person or exits without a package. */
+  stall?: { reason: 'needs_input' | 'exited'; at: string };
   pullRequestStatus?: PullRequestStatus; pendingDecisionIds?: string[];
 }
 export interface WorkPackage {
@@ -48,6 +50,7 @@ export const commandSchema = z.discriminatedUnion('type', [
   z.object({ ...commandBase, type: z.literal('approve-task'), taskId: identifier, revision }),
   z.object({ ...commandBase, type: z.literal('set-assigning-rule'), rule: assigningRuleSchema }),
   z.object({ ...commandBase, type: z.literal('decline-task'), taskId: identifier, revision, note: z.string().trim().max(8000).optional() }),
+  z.object({ ...commandBase, type: z.literal('report-session'), taskId: identifier, state: z.enum(['needs_input', 'exited', 'working']) }),
   z.object({ ...commandBase, type: z.literal('claim-task'), taskId: identifier, revision }),
   z.object({ ...commandBase, type: z.literal('assign-task'), taskId: identifier, revision, assigneeId: identifier }),
   z.object({ ...commandBase, type: z.literal('start-task'), taskId: identifier, revision, tool: toolSchema }),
