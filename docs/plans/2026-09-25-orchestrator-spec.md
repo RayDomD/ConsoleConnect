@@ -1,7 +1,7 @@
 ---
 title: Orchestrator and workers spec
 date: 2026-09-25
-status: In Progress
+status: Done
 summary: Contracts and tickets for roadmap Phase 2 (2.1–2.13), from the orchestrator ADR Q1–Q13.
 ---
 
@@ -9,7 +9,7 @@ summary: Contracts and tickets for roadmap Phase 2 (2.1–2.13), from the orches
 
 ## Status & Progress Summary
 
-Spec written 2026-09-25 from `docs/adr/2026-09-25-orchestrator.md`. Tickets below map one-to-one to roadmap items 2.1–2.13. Done: 2.1–2.7. Next: 2.8 package draft.
+Spec written 2026-09-25 from `docs/adr/2026-09-25-orchestrator.md`. Tickets below map one-to-one to roadmap items 2.1–2.13. All tickets 2.1–2.13 done on 2026-09-25. Summary: `docs/session-summaries/2026-09-25-orchestrator-summary.md`.
 
 ## Context
 
@@ -96,3 +96,4 @@ Typecheck, vitest (domain, CLI parsing, brief, readiness, event policy), `node s
 
 - 2026-09-25: Spec written from the orchestrator ADR; tickets 2.1–2.13 defined. Next: 2.1.
 - 2026-09-25: 2.1–2.7 built. Pipe socket path and main-as-relay recorded. Readiness markers taken from real Claude Code and Codex idle screens. Orchestrator console sharing deferred (sharing is keyed to tasks).
+- 2026-09-25: 2.8–2.13 built. Stalls cross computers through report-session. Automatic runs hold hand-outs in a Held for you rail with Send and Discard rather than typing into the busy console. Project map drift on main uses the GitHub CLI's commit-to-pull-request lookup.
