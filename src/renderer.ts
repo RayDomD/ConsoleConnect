@@ -4,7 +4,7 @@ import { commandSchema, toolSchema, type AssigningRule } from './coordination/_i
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { flushPending, loadPending, savePending } from './offline';
-import { hostedAccessToken, hostedProjects, hostedRequest, hostedSignIn, watchHostedWorkspace, type SupabaseConnection } from './supabase-client';
+import { hostedAccessToken, hostedProjects, hostedRequest, hostedSignIn, shareHostedTerminal, watchHostedTerminal, watchHostedWorkspace, type SupabaseConnection } from './supabase-client';
 import { invitationLink, parseInvitationLink } from './invitations';
 import { renderDecisionDocument } from './decision-document';
 import { repositoryIdentity } from './repository';
@@ -192,7 +192,7 @@ document.addEventListener('keydown', () => { lastActivityAt = Date.now(); }, tru
 
 function presencePayload() {
   const here = document.hasFocus() || Date.now() - lastActivityAt < awayAfterMs;
-  const shared = Boolean(terminalTaskId && snapshot?.sharedTerminalTaskIds?.includes(terminalTaskId));
+  const shared = Boolean(terminalTaskId && consoleShared(terminalTaskId));
   const task = terminalTaskId && terminalSessionActive && toolSchema.safeParse(terminalTool).success
     ? { kind: 'task' as const, taskId: terminalTaskId, tool: terminalTool, needsInput: terminalNeedsInput, shared, ...(shared ? { glimpse: glimpse(terminalOutput) } : {}) }
     : null;
@@ -212,6 +212,29 @@ function sendPresence(force = false) {
 }
 window.addEventListener('focus', () => sendPresence(true));
 window.addEventListener('blur', () => sendPresence(true));
+
+// Hosted console sharing (roadmap 3.2): output is batched like the local host's relay, then broadcast.
+const hostedShareFlushMs = 200;
+const hostedShareChunkChars = 16_384;
+const hostedShares = new Map<string, { send: (data: string) => void; stop: () => Promise<void>; pending: string }>();
+let stopHostedWatchTerminal: (() => void) | null = null;
+setInterval(() => {
+  for (const share of hostedShares.values()) {
+    if (!share.pending) continue;
+    share.send(share.pending.slice(-hostedShareChunkChars));
+    share.pending = '';
+  }
+}, hostedShareFlushMs);
+
+function consoleShared(taskId: string) {
+  return connection?.mode === 'supabase' ? hostedShares.has(taskId) : Boolean(snapshot?.sharedTerminalTaskIds?.includes(taskId));
+}
+
+async function stopHostedShare(taskId: string) {
+  const share = hostedShares.get(taskId);
+  hostedShares.delete(taskId);
+  await share?.stop();
+}
 
 // Worker side of stalls: after this long waiting on its owner, the session is reported so the orchestrator hears.
 const stallAfterMs = 120_000;
@@ -1029,14 +1052,14 @@ function render() {
     if (taskTab === 'console') {
       const mine = selected.assigneeId === snapshot.memberId;
       const localTerminal = selected.id === terminalTaskId;
-      const sharedTerminal = snapshot.sharedTerminalTaskIds?.includes(selected.id) ?? false;
+      const sharedTerminal = localTerminal ? consoleShared(selected.id) : snapshot.sharedTerminalTaskIds?.includes(selected.id) ?? false;
       const watching = selected.id === watchedTaskId;
       const canLaunch = mine && ['ready', 'running', 'changes_requested'].includes(selected.status) && !terminalSessionActive;
       const launch = canLaunch ? `<div class="console-launch"><select id="tool" aria-label="Choose tool">${Object.entries(toolNames).map(([id, name]) => `<option value="${id}" ${id === terminalTool ? 'selected' : ''}>${name}</option>`).join('')}</select><button data-action="start">${localTerminal ? 'New console' : 'Launch console'}</button></div>` : '';
-      const controls = localTerminal && terminalSessionActive && connection?.mode !== 'supabase'
+      const controls = localTerminal && terminalSessionActive
         ? `<button class="text-button" data-action="toggle-terminal-sharing" aria-pressed="${sharedTerminal}">${sharedTerminal ? 'Stop sharing' : 'Share view only'}</button>`
         : watching ? '<button class="text-button" data-action="stop-watching">Stop watching</button>'
-          : sharedTerminal && !localTerminal && connection?.mode !== 'supabase' ? '<button class="secondary" data-action="watch-terminal">Watch shared console</button>' : '';
+          : sharedTerminal && !localTerminal ? '<button class="secondary" data-action="watch-terminal">Watch shared console</button>' : '';
       const stop = localTerminal && terminalSessionActive ? '<button class="text-button session-stop" data-action="stop-console">Stop</button>' : '';
       const session = localTerminal && terminalTool ? `<span class="session-tool">${escape(toolNames[terminalTool] ?? terminalTool)}</span><span class="session-branch" title="console-connect/${escape(selected.id)}"><span class="session-branch-prefix">console-connect</span>/${escape(selected.id.slice(0, 8))}</span><span class="session-elapsed">${elapsedLabel()}</span>` : '';
       const status = localTerminal ? terminalSessionActive ? 'Session running' : 'Session ended' : watching ? 'View only' : 'No console';
@@ -1565,18 +1588,34 @@ app.addEventListener('click', async event => {
     if (action === 'open-palette') { openPalette(paletteItems()); return; }
     if (!task) return;
     if (action === 'toggle-terminal-sharing') {
+      if (connection?.mode === 'supabase') {
+        if (hostedShares.has(task.id)) await stopHostedShare(task.id);
+        else hostedShares.set(task.id, { ...await shareHostedTerminal(connection, task.id), pending: '' });
+        sendPresence(true); render();
+        return;
+      }
       await window.consoleConnect.setTerminalSharing({ taskId: task.id, enabled: !snapshot!.sharedTerminalTaskIds?.includes(task.id) });
       await refresh();
       return;
     }
     if (action === 'watch-terminal') {
-      if (connection?.mode === 'supabase') throw new Error('Hosted terminal viewing is not available yet.');
-      await window.consoleConnect.watchTerminal({ ...connection!, taskId: task.id });
+      if (connection?.mode === 'supabase') {
+        const owner = snapshot!.members.find(member => member.id === task.assigneeId)?.name ?? 'The owner';
+        stopHostedWatchTerminal = await watchHostedTerminal(connection, task.id, data => {
+          watchedOutput = (watchedOutput + data).slice(-100000);
+          if (terminalRenderSource === 'shared') terminal?.write(data);
+        }, () => {
+          stopHostedWatchTerminal?.(); stopHostedWatchTerminal = null;
+          watchedTaskId = null; watchedOutput = '';
+          notice = `${owner} stopped sharing this console.`; render();
+        });
+      } else await window.consoleConnect.watchTerminal({ ...connection!, taskId: task.id });
       watchedTaskId = task.id; watchedOutput = '';
       render();
       return;
     }
     if (action === 'stop-watching') {
+      stopHostedWatchTerminal?.(); stopHostedWatchTerminal = null;
       window.consoleConnect.stopWatchingTerminal({ taskId: task.id });
       watchedTaskId = null; watchedOutput = '';
       render();
@@ -1750,6 +1789,8 @@ window.consoleConnect.onTerminalData(event => {
   if (event.taskId !== terminalTaskId) return;
   terminalOutput = (terminalOutput + event.data).slice(-100000);
   terminalLastOutputAt = Date.now();
+  const share = hostedShares.get(event.taskId);
+  if (share) share.pending = (share.pending + event.data).slice(-hostedShareChunkChars);
   if (terminalRenderSource === 'local') terminal?.write(event.data);
 });
 window.consoleConnect.onTerminalExit(event => {
@@ -1767,6 +1808,7 @@ window.consoleConnect.onTerminalExit(event => {
   }
   terminalSessionActive = false;
   terminalEndedAt = Date.now();
+  void stopHostedShare(event.taskId);
   waitingSince = 0; stallReported = false;
   const line = `\r\nProcess exited (${event.exitCode}).\r\n`;
   terminalOutput += line;

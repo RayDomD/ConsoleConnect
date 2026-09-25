@@ -34,6 +34,14 @@ $$;
 grant usage on schema auth to authenticated;
 grant execute on function auth.uid() to authenticated;
 create publication supabase_realtime;
+create schema realtime;
+create table realtime.messages (id bigserial primary key, topic text not null, extension text not null, payload jsonb);
+alter table realtime.messages enable row level security;
+create function realtime.topic() returns text language sql stable as $$ select current_setting('realtime.topic', true) $$;
+grant usage on schema realtime to authenticated;
+grant select, insert on realtime.messages to authenticated;
+grant usage on sequence realtime.messages_id_seq to authenticated;
+grant execute on function realtime.topic() to authenticated;
 '@
   $seedFile = Join-Path $directory 'seed.sql'
   Set-Content -LiteralPath $seedFile -Value $seed
@@ -45,6 +53,8 @@ create publication supabase_realtime;
   if ($LASTEXITCODE -ne 0) { throw 'GitHub invitation migration failed.' }
   & (Join-Path $pgBin 'psql.exe') -v ON_ERROR_STOP=1 -f (Join-Path (Get-Location).Path 'supabase\migrations\20260925120000_console_presence.sql') | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'Presence migration failed.' }
+  & (Join-Path $pgBin 'psql.exe') -v ON_ERROR_STOP=1 -f (Join-Path (Get-Location).Path 'supabase\migrations\20260925130000_console_terminal_sharing.sql') | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Console sharing migration failed.' }
   $test = @'
 select public.console_create_workspace('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
   '33333333-3333-4333-8333-333333333333', 'Team', 'https://github.com/example/repo', 'Alex');
@@ -88,6 +98,28 @@ end $$;
 set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
 do $$ begin
   if (select count(*) from public.console_revisions) <> 0 then raise exception 'Nonmember can read revisions.'; end if;
+end $$;
+-- Console sharing: the assignee sends, members listen, nonmembers get nothing.
+reset role;
+update public.console_workspaces set state = jsonb_set(state, '{tasks}',
+  '[{"id": "aaaaaaaa-0000-4000-8000-000000000001", "assigneeId": "22222222-2222-4222-8222-222222222222", "status": "running"}]'::jsonb)
+  where id = '11111111-1111-4111-8111-111111111111';
+set role authenticated;
+select set_config('realtime.topic', 'console-terminal:11111111-1111-4111-8111-111111111111:aaaaaaaa-0000-4000-8000-000000000001', false);
+set request.jwt.claim.sub = '33333333-3333-4333-8333-333333333333';
+insert into realtime.messages(topic, extension) values (realtime.topic(), 'broadcast');
+set request.jwt.claim.sub = '44444444-4444-4444-8444-444444444444';
+do $$ begin
+  if (select count(*) from realtime.messages) <> 1 then raise exception 'A member cannot watch a shared console.'; end if;
+  begin
+    insert into realtime.messages(topic, extension) values (realtime.topic(), 'broadcast');
+    raise exception 'A member who is not the assignee could send console output.';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
+do $$ begin
+  if (select count(*) from realtime.messages) <> 0 then raise exception 'A nonmember can watch a shared console.'; end if;
 end $$;
 do $$ begin
   begin

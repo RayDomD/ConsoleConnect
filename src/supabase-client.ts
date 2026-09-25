@@ -105,3 +105,37 @@ export async function watchHostedWorkspace(connection: SupabaseConnection,
     void client.removeChannel(channel);
   };
 }
+
+// View-only console sharing on Supabase-hosted workspaces (roadmap 3.2): Realtime broadcast on a private topic.
+// Policies in migrations/20260925130000 let members listen and only the task's assignee send.
+const terminalTopic = (connection: SupabaseConnection, taskId: string) => `console-terminal:${connection.workspaceId}:${taskId}`;
+
+async function joinTerminalChannel(connection: SupabaseConnection, taskId: string, listen?: (channel: RealtimeChannel) => void) {
+  const client = getClient(connection.projectUrl, connection.publishableKey);
+  client.realtime.setAuth(await hostedAccessToken(connection));
+  const channel = client.channel(terminalTopic(connection, taskId), { config: { private: true, broadcast: { self: false } } });
+  listen?.(channel);
+  await new Promise<void>((resolve, reject) => channel.subscribe(status => {
+    if (status === 'SUBSCRIBED') resolve();
+    else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') reject(new Error('Could not reach the shared console. Check that the sharing migration is applied.'));
+  }));
+  return { client, channel };
+}
+
+export async function shareHostedTerminal(connection: SupabaseConnection, taskId: string) {
+  const { client, channel } = await joinTerminalChannel(connection, taskId);
+  return {
+    send: (data: string) => { void channel.send({ type: 'broadcast', event: 'output', payload: { data } }); },
+    stop: async () => {
+      await channel.send({ type: 'broadcast', event: 'ended', payload: {} }).catch(() => undefined);
+      await client.removeChannel(channel);
+    },
+  };
+}
+
+export async function watchHostedTerminal(connection: SupabaseConnection, taskId: string, onData: (data: string) => void, onEnded: () => void) {
+  const { client, channel } = await joinTerminalChannel(connection, taskId, joining => joining
+    .on('broadcast', { event: 'output' }, message => { if (typeof message.payload?.data === 'string') onData(message.payload.data); })
+    .on('broadcast', { event: 'ended' }, () => onEnded()));
+  return () => { void client.removeChannel(channel); };
+}
