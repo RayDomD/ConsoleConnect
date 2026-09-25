@@ -36,6 +36,7 @@ declare global {
       runTask(input: WorkspaceInput & { taskId: string; tool: string; repositoryPath: string }): Promise<{ directory: string }>;
       runOrchestrator(input: { repositoryPath: string; workspaceRepository: string; tool: string }): Promise<{ directory: string }>;
       setTerminalSharing(input: { taskId: string; enabled: boolean }): Promise<void>;
+      setTerminalPaused(input: { taskId: string; paused: boolean }): Promise<void>;
       watchTerminal(input: { url: string; token: string; taskId: string }): Promise<void>;
       stopWatchingTerminal(input: { taskId: string }): void;
       onSharedTerminalData(callback: (event: { taskId: string; data: string }) => void): void;
@@ -243,6 +244,45 @@ async function stopHostedShare(taskId: string) {
 }
 
 setInterval(() => { if (showOffice && view === 'review' && snapshot) void refresh(); }, officeRefreshMs);
+
+// Sharing a console in the Office (Office ADR Q18): ask once, then remember; one accessible switch everywhere.
+const officeSharingKey = 'console-connect.office-sharing';
+type OfficeSharing = 'ask' | 'show' | 'private';
+const loadOfficeSharing = (): OfficeSharing => { const saved = localStorage.getItem(officeSharingKey); return saved === 'show' || saved === 'private' ? saved : 'ask'; };
+let sharePromptTaskId: string | null = null;
+let shownSharePrompt: string | null = null;
+let sharingPaused = false;
+let noticeActions = '';
+
+async function setConsoleShared(taskId: string, shared: boolean) {
+  if (consoleShared(taskId) === shared) return;
+  if (connection?.mode === 'supabase') {
+    if (shared) hostedShares.set(taskId, { ...await shareHostedTerminal(connection, taskId), pending: '' });
+    else await stopHostedShare(taskId);
+  } else {
+    await window.consoleConnect.setTerminalSharing({ taskId, enabled: shared });
+    await refresh();
+  }
+  if (!shared) sharingPaused = false;
+  sendPresence(true);
+}
+
+async function toggleConsoleShared(taskId: string) {
+  const shared = !consoleShared(taskId);
+  await setConsoleShared(taskId, shared);
+  notice = shared ? 'Your console is shown in the Office.' : 'Your console is private now.';
+  noticeActions = shared ? '' : `<button class="text-button" data-action="undo-private" data-task="${escape(taskId)}">Undo</button>`;
+  render();
+}
+
+function shareSwitchMarkup(taskId: string) {
+  const shared = consoleShared(taskId);
+  return `<button class="office-share" role="switch" aria-checked="${shared}" data-action="toggle-terminal-sharing" data-share-task="${escape(taskId)}" title="Show this console in the Office (Ctrl+Shift+S)">${shared ? 'Shown in Office' : 'Private'}</button>${shared ? `<button class="text-button" data-action="pause-sharing" aria-pressed="${sharingPaused}">${sharingPaused ? 'Resume output' : 'Pause output'}</button>` : ''}`;
+}
+
+function sharePromptMarkup() {
+  return `<div class="proposal-backdrop"><section class="proposal" role="dialog" aria-modal="true" aria-labelledby="share-prompt-title"><h2 id="share-prompt-title">Show this console in the Office?</h2><p class="proposal-why">Teammates see your task, your tool, and a few lines of output, and can watch view only. Nobody can type into it. You can change this any time from the console strip.</p><label class="chat-setting-check"><input type="checkbox" id="share-remember" checked>Remember my choice</label><div class="proposal-actions"><span class="session-spacer"></span><button class="secondary" data-action="share-prompt" data-choice="private">Keep private</button><button data-action="share-prompt" data-choice="show">Show in Office</button></div></section></div>`;
+}
 
 // Worker side of stalls: after this long waiting on its owner, the session is reported so the orchestrator hears.
 const stallAfterMs = 120_000;
@@ -521,7 +561,7 @@ function renderDashboard() {
       : `No local folder yet. <button class="text-button inline-link" data-action="choose-project-folder" data-project="${escape(project.id)}">Choose folder</button>`;
     return `<article class="project-row"><div class="project-head"><h2>${escape(project.name)}</h2><button data-action="open-project" data-project="${escape(project.id)}">Open</button></div><p>${meta.map(escape).join(' · ')}</p>${countLine}<p class="project-folder">${folder}</p></article>`;
   }).join('');
-  app.innerHTML = `<main class="dashboard"><header class="dashboard-header"><div class="brand">CONSOLE <b>CONNECT</b></div><button class="text-button" data-action="settings">Settings</button></header><div class="dashboard-body"><h1>Projects</h1><p class="description">Choose where you want to work, or connect another workspace.</p><div class="project-list">${projectList || '<p class="empty-projects">No projects connected yet. Add one below to begin.</p>'}</div>${projects.length ? `<button class="secondary add-project" data-action="add-project">${showSetup ? 'Hide connection forms' : 'Add or join a project'}</button>` : ''}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}${showSetup || !projects.length ? `<section class="setup"><form id="join-invitation"><h2>Join from an invitation</h2><p class="description">Paste the link a teammate shared with you. The project details are already inside it.</p><label>Invitation link<input name="link" required placeholder="consoleconnect://invite/..."></label><label>Your name<input name="name" required></label><button type="submit">Join workspace</button></form><form id="host"><h2>Host on this computer</h2><label>Your name<input name="owner" required></label><label>Workspace name<input name="name" required></label><label>Repository URL<input name="repository" required></label><button type="submit">Start workspace</button></form><form id="join"><h2>Join a computer host</h2><label>Host address<input name="url" placeholder="http://host-ip:24680" required></label><label>Your name<input name="name" required></label><label>Invitation code<input name="code" required></label><button type="submit">Join workspace</button></form><form id="hosted-host"><h2>Host with Supabase</h2><label>Project URL<input name="projectUrl" type="url" required value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" required value="${escape(supabaseDefaults.publishableKey)}"></label><label>Your name<input name="owner" required></label><label>Workspace name<input name="name" required></label><label>Repository URL<input name="repository" required></label><button type="submit">Start hosted workspace</button></form><form id="hosted-join"><h2>Join with Supabase</h2><label>Project URL<input name="projectUrl" type="url" required value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" required value="${escape(supabaseDefaults.publishableKey)}"></label><label>Your name<input name="name" required></label><label>Invitation code<input name="code" required></label><button type="submit">Join hosted workspace</button></form></section>` : ''}</div></main>`;
+  app.innerHTML = `<main class="dashboard"><header class="dashboard-header"><div class="brand">CONSOLE <b>CONNECT</b></div><button class="text-button" data-action="settings">Settings</button></header><div class="dashboard-body"><h1>Projects</h1><p class="description">Choose where you want to work, or connect another workspace.</p><div class="project-list">${projectList || '<p class="empty-projects">No projects connected yet. Add one below to begin.</p>'}</div>${projects.length ? `<button class="secondary add-project" data-action="add-project">${showSetup ? 'Hide connection forms' : 'Add or join a project'}</button>` : ''}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}${showSetup || !projects.length ? `<section class="setup"><form id="join-invitation"><h2>Join from an invitation</h2><p class="description">Paste the link a teammate shared with you. The project details are already inside it.</p><label>Invitation link<input name="link" required placeholder="consoleconnect://invite/..."></label><label>Your name<input name="name" required></label><button type="submit">Join workspace</button></form><form id="host"><h2>Host on this computer</h2><label>Your name<input name="owner" required></label><label>Workspace name<input name="name" required></label><label>Repository URL<input name="repository" required></label><button type="submit">Start workspace</button></form><form id="join"><h2>Join a computer host</h2><label>Host address<input name="url" placeholder="http://host-ip:24680" required></label><label>Your name<input name="name" required></label><label>Invitation code<input name="code" required></label><button type="submit">Join workspace</button></form><form id="hosted-host"><h2>Host with Supabase</h2><label>Project URL<input name="projectUrl" type="url" required value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" required value="${escape(supabaseDefaults.publishableKey)}"></label><label>Your name<input name="owner" required></label><label>Workspace name<input name="name" required></label><label>Repository URL<input name="repository" required></label><button type="submit">Start hosted workspace</button></form><form id="hosted-join"><h2>Join with Supabase</h2><label>Project URL<input name="projectUrl" type="url" required value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" required value="${escape(supabaseDefaults.publishableKey)}"></label><label>Your name<input name="name" required></label><label>Invitation code<input name="code" required></label><button type="submit">Join hosted workspace</button></form></section>` : ''}</div></main>`;
   const connectionHelp: Record<string, string[]> = {
     'join-invitation': ['Ask your teammate for a one-time Console Connect invitation link.', 'For a computer-hosted workspace, join the same Radmin VPN network and keep the host computer online.', 'Paste the link here. If it names a GitHub account, sign in with that account before joining.'],
     host: ['Join a private Radmin VPN network before starting the workspace. Console Connect uses its VPN address automatically.', 'Enter your name, a workspace name, and the GitHub repository URL.', 'Once inside, choose Invite member and share the link. Keep this computer and the VPN running.'],
@@ -549,9 +589,9 @@ function renderDashboard() {
 
 function renderSettings() {
   const theme = loadTheme();
-  app.innerHTML = `<main class="settings-page"><header class="dashboard-header"><div class="brand">CONSOLE <b>CONNECT</b></div><button class="text-button" data-action="settings-back">Back</button></header><div class="settings-body"><h1>Settings</h1><section class="settings-section"><h2>Appearance</h2><p class="description">Choose the color theme for this computer.</p><label>Theme<select id="theme">${themes.map(item => `<option value="${item.id}" ${item.id === theme.id ? 'selected' : ''}>${escape(item.name)}</option>`).join('')}</select></label><label class="chat-setting-check"><input id="press-sound" type="checkbox" ${pressSoundEnabled() ? 'checked' : ''}>Play a soft click when pressing buttons</label></section><section class="settings-section"><h2>Supabase connection</h2><p class="description">These defaults fill the forms when you add or join a hosted project. Existing projects keep their own connection.</p><form id="supabase-settings"><label>Project URL<input name="projectUrl" type="url" placeholder="https://your-project.supabase.co" value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" value="${escape(supabaseDefaults.publishableKey)}"></label><button type="submit">Save connection defaults</button></form></section>${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main>`;
+  app.innerHTML = `<main class="settings-page"><header class="dashboard-header"><div class="brand">CONSOLE <b>CONNECT</b></div><button class="text-button" data-action="settings-back">Back</button></header><div class="settings-body"><h1>Settings</h1><section class="settings-section"><h2>Appearance</h2><p class="description">Choose the color theme for this computer.</p><label>Theme<select id="theme">${themes.map(item => `<option value="${item.id}" ${item.id === theme.id ? 'selected' : ''}>${escape(item.name)}</option>`).join('')}</select></label><label class="chat-setting-check"><input id="press-sound" type="checkbox" ${pressSoundEnabled() ? 'checked' : ''}>Play a soft click when pressing buttons</label></section><section class="settings-section"><h2>Supabase connection</h2><p class="description">These defaults fill the forms when you add or join a hosted project. Existing projects keep their own connection.</p><form id="supabase-settings"><label>Project URL<input name="projectUrl" type="url" placeholder="https://your-project.supabase.co" value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" value="${escape(supabaseDefaults.publishableKey)}"></label><button type="submit">Save connection defaults</button></form></section>${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}</div></main>`;
   document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', '<section class="settings-section"><h2>Account</h2><p class="description">Connect a GitHub or Google account to keep access to hosted projects across computers. Existing projects stay linked to your current identity.</p><div class="oauth-actions"><button class="secondary" data-action="sign-in-github">Connect GitHub</button><button class="secondary" data-action="sign-in-google">Connect Google</button></div></section>');
-  document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', `<section class="settings-section"><h2>Orchestrator</h2><p>How your orchestrator console hears about team updates. They are typed in for you to send, unless you let it handle some automatically. Automatic runs use your AI tool's usage, and approvals still wait for your click.</p>${autoSettingsMarkup()}</section><section class="settings-section"><h2>Command line</h2><p>Use <code>console-connect</code> from any terminal or AI tool while this app is open. Consoles inside the app already have it. For other terminals, add this folder to your PATH.</p><div class="cli-folder"><input readonly aria-label="console-connect folder" value="${escape(cliFolderPath)}"><button class="secondary" data-action="copy-cli-folder">Copy folder</button></div></section><section class="settings-section"><h2>Team chat notifications</h2><p class="description">Unread messages still appear in the app when desktop notifications are muted.</p><label class="chat-setting-check"><input id="chat-notifications-enabled" type="checkbox" ${chatNotifications.enabled ? 'checked' : ''}>Show desktop notifications when the app is in the background</label><label class="chat-setting-check"><input id="chat-notifications-preview" type="checkbox" ${chatNotifications.showPreview ? 'checked' : ''}>Include message text in desktop notifications</label></section>`);
+  document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', `<section class="settings-section"><h2>Office</h2><p>Whether new consoles show in the Office. Teammates can watch view only; nobody can type into your console.</p><label>New consoles<select id="office-sharing"><option value="ask" ${loadOfficeSharing() === 'ask' ? 'selected' : ''}>Ask each time</option><option value="show" ${loadOfficeSharing() === 'show' ? 'selected' : ''}>Show in Office</option><option value="private" ${loadOfficeSharing() === 'private' ? 'selected' : ''}>Keep private</option></select></label></section><section class="settings-section"><h2>Orchestrator</h2><p>How your orchestrator console hears about team updates. They are typed in for you to send, unless you let it handle some automatically. Automatic runs use your AI tool's usage, and approvals still wait for your click.</p>${autoSettingsMarkup()}</section><section class="settings-section"><h2>Command line</h2><p>Use <code>console-connect</code> from any terminal or AI tool while this app is open. Consoles inside the app already have it. For other terminals, add this folder to your PATH.</p><div class="cli-folder"><input readonly aria-label="console-connect folder" value="${escape(cliFolderPath)}"><button class="secondary" data-action="copy-cli-folder">Copy folder</button></div></section><section class="settings-section"><h2>Team chat notifications</h2><p class="description">Unread messages still appear in the app when desktop notifications are muted.</p><label class="chat-setting-check"><input id="chat-notifications-enabled" type="checkbox" ${chatNotifications.enabled ? 'checked' : ''}>Show desktop notifications when the app is in the background</label><label class="chat-setting-check"><input id="chat-notifications-preview" type="checkbox" ${chatNotifications.showPreview ? 'checked' : ''}>Include message text in desktop notifications</label></section>`);
 }
 
 async function request(path: string, body?: unknown, target = connection) {
@@ -916,7 +956,7 @@ function officeMarkup() {
   const around = rooms.around.map(card => `<li data-flip="office-${escape(card.memberId)}"><span class="avatar" aria-hidden="true">${escape(card.name.slice(0, 1).toUpperCase())}</span>${escape(card.name)}${card.memberId === meId ? ' (you)' : ''}<small>${card.status === 'away' ? 'Away' : 'Here'}</small></li>`).join('');
   const offline = rooms.offline.length ? `<p class="rail-meta office-offline">Offline: ${rooms.offline.map(card => escape(card.name)).join(', ')}</p>` : '';
   const mineRunning = terminalTaskId && terminalSessionActive;
-  const shareSwitch = mineRunning ? `<button class="office-share" role="switch" aria-checked="${consoleShared(terminalTaskId!)}" data-action="office-share">${consoleShared(terminalTaskId!) ? 'Shown in Office' : 'Private'}</button>` : '';
+  const shareSwitch = mineRunning ? `<div class="office-share-row"><span>Show my console here</span>${shareSwitchMarkup(terminalTaskId!)}</div>` : '';
   return `<div class="office-head"><div><h1>Office</h1><div class="meta"><span>${escape(snapshot!.workspace.name)}</span><span aria-hidden="true">·</span><span>${rooms.here} here${rooms.away ? ` · ${rooms.away} away` : ''}</span></div></div>${shareSwitch}</div>`
     + room('Needs a hand', rooms.needsHand, "Nobody's stuck right now.")
     + room('Building', rooms.building, '')
@@ -1023,6 +1063,7 @@ const regionScrollSelectors = ['.task-list', '.desk', '.right-rail'];
 let renderedDeskKey = '';
 
 function render() {
+  if (!notice) noticeActions = '';
   const previousChatStream = document.querySelector<HTMLElement>('#team-chat-stream');
   const previousChatScroll = previousChatStream?.scrollTop ?? 0;
   const chatWasAtBottom = !previousChatStream || previousChatStream.scrollHeight - previousChatStream.scrollTop - previousChatStream.clientHeight < 40;
@@ -1049,13 +1090,13 @@ function render() {
   if (view === 'settings') { renderSettings(); return; }
   if (view === 'dashboard') { renderDashboard(); return; }
   if (!snapshot) {
-    app.innerHTML = `<main class="loading-workspace"><button class="text-button" data-action="disconnect">← Projects</button><h1>Opening project…</h1>${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : '<p class="description">Connecting to the workspace.</p>'}</main>`;
+    app.innerHTML = `<main class="loading-workspace"><button class="text-button" data-action="disconnect">← Projects</button><h1>Opening project…</h1>${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : '<p class="description">Connecting to the workspace.</p>'}</main>`;
     return;
   }
   const selected = snapshot.tasks.find(task => task.id === selectedTaskId) ?? snapshot.tasks[0];
   const me = snapshot.members.find(member => member.id === snapshot!.memberId);
   const unread = unreadTeamMessages();
-  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(sentenceCase(task.status))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || showOrchestrator || showOffice || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : showOrchestrator ? 'Orchestrator' : showOffice ? 'Office' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(sentenceCase(task.status))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || showOrchestrator || showOffice || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : showOrchestrator ? 'Orchestrator' : showOffice ? 'Office' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
   document.querySelector('.desk-content')?.classList.toggle('console-active', (taskTab === 'console' && !showWorkspaceChat) || showOrchestrator);
   document.querySelector('.topbar div')!.innerHTML = `<button class="text-button topbar-jump" data-action="open-palette" title="Jump to a task, person, or action">Jump<kbd>Ctrl</kbd><kbd>K</kbd></button><button class="secondary topbar-chat" data-action="open-chat-drawer" title="Team chat (C)">Chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button><button class="text-button" data-action="disconnect">Projects</button>`;
   if (me?.role !== 'owner') document.querySelector('.invite')?.remove();
@@ -1078,14 +1119,14 @@ function render() {
   if (showWorkspaceChat) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
     document.querySelector('.desk-content')!.classList.add('chat-page');
-    document.querySelector('.desk-content')!.innerHTML = `${chatRoomMarkup()}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}`;
+    document.querySelector('.desk-content')!.innerHTML = `${chatRoomMarkup()}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}`;
   } else if (showOffice) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
     document.querySelector('.desk-content')!.classList.add('office-page');
-    document.querySelector('.desk-content')!.innerHTML = `${officeMarkup()}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}`;
+    document.querySelector('.desk-content')!.innerHTML = `${officeMarkup()}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}`;
   } else if (showOrchestrator) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
-    document.querySelector('.desk-content')!.innerHTML = `${orchestratorMarkup()}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}`;
+    document.querySelector('.desk-content')!.innerHTML = `${orchestratorMarkup()}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}`;
     mountOrchestratorTerminal();
   } else if (selected) {
     if (taskTab === 'package' && selected.pendingDecisionIds?.length) {
@@ -1108,7 +1149,7 @@ function render() {
       const canLaunch = mine && ['ready', 'running', 'changes_requested'].includes(selected.status) && !terminalSessionActive;
       const launch = canLaunch ? `<div class="console-launch"><select id="tool" aria-label="Choose tool">${Object.entries(toolNames).map(([id, name]) => `<option value="${id}" ${id === terminalTool ? 'selected' : ''}>${name}</option>`).join('')}</select><button data-action="start">${localTerminal ? 'New console' : 'Launch console'}</button></div>` : '';
       const controls = localTerminal && terminalSessionActive
-        ? `<button class="text-button" data-action="toggle-terminal-sharing" aria-pressed="${sharedTerminal}">${sharedTerminal ? 'Stop sharing' : 'Share view only'}</button>`
+        ? shareSwitchMarkup(selected.id)
         : watching ? '<button class="text-button" data-action="stop-watching">Stop watching</button>'
           : sharedTerminal && !localTerminal ? '<button class="secondary" data-action="watch-terminal">Watch shared console</button>' : '';
       const stop = localTerminal && terminalSessionActive ? '<button class="text-button session-stop" data-action="stop-console">Stop</button>' : '';
@@ -1173,6 +1214,10 @@ function render() {
       document.querySelector('.workspace')!.classList.add('workspace-no-rail');
     }
   }
+  if (sharePromptTaskId && !reviewProposals.length) {
+    app.insertAdjacentHTML('beforeend', sharePromptMarkup());
+    if (shownSharePrompt !== sharePromptTaskId) { shownSharePrompt = sharePromptTaskId; document.querySelector<HTMLButtonElement>('[data-action=share-prompt][data-choice=show]')?.focus(); }
+  }
   if (reviewProposals.length) {
     app.insertAdjacentHTML('beforeend', proposalMarkup());
     if (shownProposalId !== reviewProposals[0]!.id) {
@@ -1204,6 +1249,7 @@ app.addEventListener('change', event => {
   const target = event.target as HTMLElement;
   if (target.id === 'theme') { selectTheme((target as HTMLSelectElement).value as ThemeId); render(); }
   if (target.id === 'press-sound') setPressSound((target as HTMLInputElement).checked);
+  if (target.id === 'office-sharing') localStorage.setItem(officeSharingKey, (target as HTMLSelectElement).value);
   if (target.dataset.auto) {
     const settings = loadAutoSettings();
     const key = target.dataset.auto as keyof AutoSettings;
@@ -1401,6 +1447,7 @@ document.addEventListener('keydown', event => {
     document.querySelector<HTMLButtonElement>('[data-action=toggle-assign-menu]')?.focus();
     return;
   }
+  if (event.key === 'Escape' && sharePromptTaskId) { sharePromptTaskId = null; render(); return; }
   if (event.key === 'Escape' && reviewProposals.length) { reviewProposals.shift(); editingProposal = false; render(); return; }
   if (reviewProposals.length || paletteOpen() || view !== 'review' || !snapshot || event.defaultPrevented) return;
   const key = event.key.toLowerCase();
@@ -1408,6 +1455,11 @@ document.addEventListener('keydown', event => {
     if ((event.target as HTMLElement | null)?.closest?.('.xterm')) return;
     event.preventDefault();
     openPalette(paletteItems());
+    return;
+  }
+  if (event.ctrlKey && event.shiftKey && !event.altKey && key === 's' && terminalTaskId && terminalSessionActive && !(event.target as HTMLElement | null)?.closest?.('.xterm')) {
+    event.preventDefault();
+    void toggleConsoleShared(terminalTaskId);
     return;
   }
   if (event.ctrlKey && event.key === '`') {
@@ -1521,7 +1573,7 @@ app.addEventListener('click', async event => {
       snapshot = null;
       selectedTaskId = null;
       showWorkspaceChat = false; showChatDrawer = false; showOrchestrator = false; showOffice = false;
-      orchestratorEvents = [];
+      orchestratorEvents = []; sharePromptTaskId = null;
       view = 'review';
       notice = '';
       localStorage.setItem('console-connect.connection', JSON.stringify(connection));
@@ -1542,7 +1594,7 @@ app.addEventListener('click', async event => {
       stopHostedWatch?.(); stopHostedWatch = null;
       window.consoleConnect.stopWatchingWorkspace();
       connection = null; snapshot = null; view = 'dashboard'; notice = ''; currentInvitationLink = '';
-      orchestratorEvents = [];
+      orchestratorEvents = []; sharePromptTaskId = null;
       projectSummariesLoadedAt = 0;
       showChatDrawer = false; showWorkspaceChat = false; chatToast = null;
       localStorage.removeItem('console-connect.connection'); render(); return;
@@ -1590,6 +1642,24 @@ app.addEventListener('click', async event => {
     }
     if (action === 'copy-invitation') { await window.consoleConnect.copyText(currentInvitationLink); notice = 'Invitation link copied.'; render(); return; }
     // Workspace-level actions: they work before any task exists.
+    if (action === 'toggle-terminal-sharing' && button.dataset.shareTask) { await toggleConsoleShared(button.dataset.shareTask); return; }
+    if (action === 'undo-private' && button.dataset.task) { noticeActions = ''; await setConsoleShared(button.dataset.task, true); notice = 'Your console is shown in the Office again.'; render(); return; }
+    if (action === 'pause-sharing' && terminalTaskId) {
+      sharingPaused = !sharingPaused;
+      if (connection?.mode === 'supabase') { const share = hostedShares.get(terminalTaskId); if (share && sharingPaused) share.pending = ''; }
+      else await window.consoleConnect.setTerminalPaused({ taskId: terminalTaskId, paused: sharingPaused });
+      notice = sharingPaused ? 'Output is paused for viewers. Your console keeps running.' : 'Viewers see your output again.'; noticeActions = '';
+      render(); return;
+    }
+    if (action === 'share-prompt' && sharePromptTaskId) {
+      const choice = button.dataset.choice === 'show' ? 'show' : 'private';
+      if (document.querySelector<HTMLInputElement>('#share-remember')?.checked) localStorage.setItem(officeSharingKey, choice);
+      const taskId = sharePromptTaskId;
+      sharePromptTaskId = null;
+      if (choice === 'show') await setConsoleShared(taskId, true);
+      render(); return;
+    }
+    if (action === 'open-task' && button.dataset.task) { selectedTaskId = button.dataset.task; showOffice = false; noticeActions = ''; render(); return; }
     if (action === 'open-office') { showOffice = true; showOrchestrator = false; showWorkspaceChat = false; render(); void refresh(); return; }
     if (action === 'office-watch') {
       selectedTaskId = button.dataset.task!; taskTab = 'console'; showOffice = false; render();
@@ -1600,17 +1670,6 @@ app.addEventListener('click', async event => {
       const me = snapshot!.members.find(member => member.id === snapshot!.memberId)?.name ?? 'A teammate';
       await command(null, { type: 'post-message', taskId: button.dataset.task, body: `${me} would like to watch this console. Share it from the console strip if that's all right.` });
       notice = 'Asked in the task discussion.'; render(); return;
-    }
-    if (action === 'office-share' && terminalTaskId) {
-      const running = snapshot!.tasks.find(item => item.id === terminalTaskId);
-      if (connection?.mode === 'supabase') {
-        if (hostedShares.has(terminalTaskId)) await stopHostedShare(terminalTaskId);
-        else hostedShares.set(terminalTaskId, { ...await shareHostedTerminal(connection, terminalTaskId), pending: '' });
-      } else if (running) {
-        await window.consoleConnect.setTerminalSharing({ taskId: running.id, enabled: !snapshot!.sharedTerminalTaskIds?.includes(running.id) });
-        await refresh();
-      }
-      sendPresence(true); render(); return;
     }
     if (action === 'draft-project-map') {
       const repositoryPath = await currentProjectFolder();
@@ -1661,17 +1720,7 @@ app.addEventListener('click', async event => {
     if (action === 'proposal-confirm') { await confirmProposal(); return; }
     if (action === 'open-palette') { openPalette(paletteItems()); return; }
     if (!task) return;
-    if (action === 'toggle-terminal-sharing') {
-      if (connection?.mode === 'supabase') {
-        if (hostedShares.has(task.id)) await stopHostedShare(task.id);
-        else hostedShares.set(task.id, { ...await shareHostedTerminal(connection, task.id), pending: '' });
-        sendPresence(true); render();
-        return;
-      }
-      await window.consoleConnect.setTerminalSharing({ taskId: task.id, enabled: !snapshot!.sharedTerminalTaskIds?.includes(task.id) });
-      await refresh();
-      return;
-    }
+    if (action === 'toggle-terminal-sharing') { await toggleConsoleShared(button.dataset.shareTask ?? task.id); return; }
     if (action === 'watch-terminal') {
       if (connection?.mode === 'supabase') {
         const owner = snapshot!.members.find(member => member.id === task.assigneeId)?.name ?? 'The owner';
@@ -1681,7 +1730,9 @@ app.addEventListener('click', async event => {
         }, () => {
           stopHostedWatchTerminal?.(); stopHostedWatchTerminal = null;
           watchedTaskId = null; watchedOutput = '';
-          notice = `${owner} stopped sharing this console.`; render();
+          notice = `${owner} stopped sharing this console.`;
+          noticeActions = `<button class="text-button" data-action="ask-to-watch" data-task="${escape(task.id)}">Ask to watch</button>`;
+          render();
         });
       } else await window.consoleConnect.watchTerminal({ ...connection!, taskId: task.id });
       watchedTaskId = task.id; watchedOutput = '';
@@ -1722,6 +1773,10 @@ app.addEventListener('click', async event => {
       const access = active.mode === 'supabase' ? { ...active, token: await hostedAccessToken(active) } : active;
       try { terminalDirectory = (await window.consoleConnect.runTask({ ...access, taskId: task.id, tool, repositoryPath })).directory; }
       catch (error) { terminalTaskId = null; terminalSessionActive = false; throw error; }
+      sharingPaused = false;
+      const sharing = loadOfficeSharing();
+      if (sharing === 'ask') sharePromptTaskId = task.id;
+      else if (sharing === 'show') void setConsoleShared(task.id, true).catch(() => {});
       await refresh();
     }
     if (action === 'draft-package' || action === 'edit-package') {
@@ -1864,7 +1919,7 @@ window.consoleConnect.onTerminalData(event => {
   terminalOutput = (terminalOutput + event.data).slice(-100000);
   terminalLastOutputAt = Date.now();
   const share = hostedShares.get(event.taskId);
-  if (share) share.pending = (share.pending + event.data).slice(-hostedShareChunkChars);
+  if (share && !sharingPaused) share.pending = (share.pending + event.data).slice(-hostedShareChunkChars);
   if (terminalRenderSource === 'local') terminal?.write(event.data);
 });
 window.consoleConnect.onTerminalExit(event => {
@@ -1896,9 +1951,11 @@ window.consoleConnect.onSharedTerminalData(event => {
 });
 window.consoleConnect.onSharedTerminalEnded(event => {
   if (event.taskId !== watchedTaskId) return;
+  const owner = snapshot?.members.find(member => member.id === snapshot?.tasks.find(item => item.id === event.taskId)?.assigneeId)?.name ?? 'The owner';
   watchedTaskId = null;
   watchedOutput = '';
-  notice = 'Terminal sharing ended.';
+  notice = `${owner} stopped sharing this console.`;
+  noticeActions = `<button class="text-button" data-action="ask-to-watch" data-task="${escape(event.taskId)}">Ask to watch</button>`;
   render();
 });
 window.consoleConnect.onTerminalSharingError(event => {

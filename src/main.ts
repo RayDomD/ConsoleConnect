@@ -18,7 +18,7 @@ let hosted: Awaited<ReturnType<typeof startHost>> | null = null;
 type WorkspaceConnection = { url: string; token: string; mode?: 'local' } | {
   mode: 'supabase'; projectUrl: string; publishableKey: string; workspaceId: string; token: string;
 };
-type LocalSession = { terminal: IPty; url: string; token: string; hosted: boolean; shared: boolean; pending: string; sending: boolean; timer: NodeJS.Timeout; onShareError: () => void };
+type LocalSession = { terminal: IPty; url: string; token: string; hosted: boolean; shared: boolean; paused?: boolean; pending: string; sending: boolean; timer: NodeJS.Timeout; onShareError: () => void };
 const sessions = new Map<string, LocalSession>();
 const terminalWatches = new Map<string, AbortController>();
 let workspaceWatch: AbortController | null = null;
@@ -219,7 +219,8 @@ ipcMain.handle('run-task', async (event, input: WorkspaceConnection & { taskId: 
   sessions.set(task.id, session);
   terminal.onData(data => {
     if (!event.sender.isDestroyed()) event.sender.send('terminal-data', { taskId: task.id, data });
-    if (session.shared) session.pending = (session.pending + data).slice(-16384);
+    // Paused output (for example while a tool prints keys) never reaches viewers.
+    if (session.shared && !session.paused) session.pending = (session.pending + data).slice(-16384);
   });
   terminal.onExit(result => {
     clearInterval(session.timer);
@@ -254,6 +255,13 @@ ipcMain.handle('run-orchestrator', async (event, input: { repositoryPath: string
     if (!event.sender.isDestroyed()) event.sender.send('terminal-exit', { taskId: orchestratorSession, exitCode: result.exitCode });
   });
   return { directory };
+});
+
+ipcMain.handle('set-terminal-paused', (_event, input: { taskId: string; paused: boolean }) => {
+  const session = sessions.get(input.taskId);
+  if (!session) return;
+  session.paused = input.paused;
+  if (input.paused) session.pending = '';
 });
 
 ipcMain.handle('set-terminal-sharing', async (_event, input: { taskId: string; enabled: boolean }) => {

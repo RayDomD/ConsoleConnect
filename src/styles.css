@@ -259,7 +259,7 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 @media(min-width:901px){
 .session-strip{flex-wrap:nowrap}
 .session-strip>*{flex:none;white-space:nowrap}
-.session-strip .session-branch{flex:0 1 auto;min-width:0;display:inline-flex}
+.session-strip .session-branch{flex:0 1 auto;min-width:0;display:inline-flex;overflow:hidden}
 .session-branch-prefix{min-width:24px;overflow:hidden;text-overflow:ellipsis}
 .session-strip .session-spacer{flex:1 1 0}
 }
@@ -425,3 +425,10 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .office-share::before{content:'';width:8px;height:8px;margin-right:8px;border-radius:50%;box-shadow:inset 0 0 0 1.5px var(--color-muted)}
 .office-share[aria-checked=true]::before{background:var(--color-accent);box-shadow:none}
 .office-room h2.section-label{font-family:var(--font-ui);font-size:13px;font-weight:600;letter-spacing:0}
+
+/* Office sharing switch and notices (3.4) */
+.office-share:focus-visible{box-shadow:0 0 0 2px var(--color-surface),0 0 0 4px color-mix(in oklab,var(--color-focus) 70%,transparent)}
+.office-share-row{display:flex;align-items:center;gap:10px;font-size:13px;color:var(--color-muted)}
+.session-strip .office-share{min-height:32px;padding:4px 10px;font-size:12px}
+.notice-actions{display:inline-flex;gap:6px;margin-left:6px}
+.notice-actions .text-button{padding:2px 6px;font-size:13px;color:var(--color-text);text-decoration:underline;text-underline-offset:3px}

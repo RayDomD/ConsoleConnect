@@ -220,6 +220,14 @@ try {
         await new Promise(resolve => setTimeout(resolve, 200));
       }
       await evaluate(`document.querySelector('#tool').value='claude'; document.querySelector('[data-action=start]').click()`);
+      // The first console asks once whether to show it in the Office, and remembers the answer.
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if (await evaluate("document.querySelector('#share-prompt-title')?.textContent === 'Show this console in the Office?'")) break;
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      if (!(await evaluate("document.activeElement?.dataset.choice === 'show' && document.querySelector('#share-remember')?.checked === true"))) throw new Error('The Office sharing prompt did not appear with Show focused and Remember checked.');
+      await evaluate("document.querySelector('[data-action=share-prompt][data-choice=private]').click()");
+      if (await evaluate("Boolean(document.querySelector('#share-prompt-title'))") || !(await evaluate("localStorage.getItem('console-connect.office-sharing') === 'private'"))) throw new Error('Keep private was not remembered.');
     } else {
       await evaluate(`(async () => { const c = JSON.parse(localStorage.getItem('console-connect.connection')); await window.consoleConnect.runTask({ ...c, taskId: ${JSON.stringify(providerTaskId)}, tool: ${JSON.stringify(tool)}, repositoryPath: ${JSON.stringify(repository)} }); })()`);
     }
