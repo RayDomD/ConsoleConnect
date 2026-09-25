@@ -27,6 +27,12 @@ ADR: `docs/adr/2026-09-25-guided-path.md` (Q14–Q16, Q19–Q24). Spec: `docs/pl
 - `vitest run`: 87 passed (73 before this phase), including ideas on the host, blockers, playbooks and the idea CLI, recommendations, and the docs scaffold against a local bare remote.
 - `node scripts/smoke.mjs --screenshot`: the new workspace shows the sample idea; an idea is created with a size, marked ready, advanced, held at its gate, linked through the CLI, skipped with a reason, and deleted, all by clicks; a blocked task shows "Waiting on". Screenshots `dist/ideas.png` and `dist/sample-idea.png`.
 
+## Critique and audit (Ideas view)
+
+- Critique (two Sonnet 5 sub-agents, design review and detector): 22/40 before fixes; detector 0 findings; CRAFT check 9/10, the miss being 12–13px card text, an app-wide convention. Snapshot in `.impeccable/critique/`. A reported P0 (skip reason only in a tooltip) was a false alarm: the card lists each reason as text.
+- Fixed from the critique (P1, P2s): stage work in plain words with the playbook command behind Copy command, a plain Then line, a muted resize nudge instead of warning color, section labels for files, tasks, and skips, and a Delete confirmation (the sample idea keeps one-click delete per Q24; a true undo needs a host command that does not exist).
+- Audit: detector clean; text contrast passes AA (muted 5.05–5.46, warning 5.80, chips 5.52–6.84). Fixed: skipped chips' 0.7 opacity (about 3:1), and the card's size select, which resized on every arrow key and now sends only the settled choice.
+
 ## Not done
 
 - The docs setup card is not covered by the smoke run; the scaffold itself is tested against a bare remote, and `gh pr create` was not run against GitHub.
