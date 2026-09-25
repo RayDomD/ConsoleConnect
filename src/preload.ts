@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('consoleConnect', {
   validateRepository: (input: { repositoryPath: string; workspaceRepository: string }) => ipcRenderer.invoke('validate-repository', input),
   prepareDecision: (input: WorkspaceInput & { decisionId: string; repositoryPath: string }) => ipcRenderer.invoke('prepare-decision', input),
   runTask: (input: WorkspaceInput & { taskId: string; tool: string; repositoryPath: string }) => ipcRenderer.invoke('run-task', input),
+  runOrchestrator: (input: { repositoryPath: string; workspaceRepository: string; tool: string }) => ipcRenderer.invoke('run-orchestrator', input),
   setTerminalSharing: (input: { taskId: string; enabled: boolean }) => ipcRenderer.invoke('set-terminal-sharing', input),
   watchTerminal: (input: { url: string; token: string; taskId: string }) => ipcRenderer.invoke('watch-terminal', input),
   stopWatchingTerminal: (input: { taskId: string }) => ipcRenderer.send('stop-watch-terminal', input),

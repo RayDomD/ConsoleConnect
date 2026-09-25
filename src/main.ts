@@ -234,6 +234,27 @@ ipcMain.handle('run-task', async (event, input: WorkspaceConnection & { taskId: 
   return { directory };
 });
 
+// The orchestrator console runs in the linked main folder, without a worktree (orchestrator ADR Q5).
+const orchestratorSession = 'orchestrator';
+ipcMain.handle('run-orchestrator', async (event, input: { repositoryPath: string; workspaceRepository: string; tool: Tool }) => {
+  if (sessions.has(orchestratorSession)) throw new Error('The orchestrator console is already running.');
+  if (!['claude', 'codex', 'antigravity'].includes(input.tool)) throw new Error('Choose a supported tool.');
+  const directory = await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository);
+  const launch = providerLaunch(input.tool, process.env.CONSOLE_CONNECT_TEST_PROVIDER_VERSION === '1');
+  const terminal = (require('node-pty') as typeof import('node-pty')).spawn(launch.file, launch.args, { cwd: directory, cols: 100, rows: 30,
+    name: 'xterm-256color', env: consoleEnvironment(process.env, cliBin, { CONSOLE_CONNECT_TOOL: input.tool }) });
+  // Not shareable yet: view-only sharing is keyed to tasks on the host.
+  const session: LocalSession = { terminal, url: '', token: '', hosted: false, shared: false, pending: '', sending: false,
+    onShareError: () => {}, timer: setTimeout(() => {}, 0) };
+  sessions.set(orchestratorSession, session);
+  terminal.onData(data => { if (!event.sender.isDestroyed()) event.sender.send('terminal-data', { taskId: orchestratorSession, data }); });
+  terminal.onExit(result => {
+    sessions.delete(orchestratorSession);
+    if (!event.sender.isDestroyed()) event.sender.send('terminal-exit', { taskId: orchestratorSession, exitCode: result.exitCode });
+  });
+  return { directory };
+});
+
 ipcMain.handle('set-terminal-sharing', async (_event, input: { taskId: string; enabled: boolean }) => {
   const session = sessions.get(input.taskId);
   if (!session) throw new Error('Start this task on this computer before sharing.');

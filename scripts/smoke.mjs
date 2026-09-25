@@ -329,6 +329,24 @@ try {
   }
   const closed = await cli(['brief'], process.platform === 'win32' ? '\\\\.\\pipe\\cc-smoke-closed' : join(directory, 'closed.sock'));
   if (closed.code !== 2 || !closed.stderr.includes('Open Console Connect')) throw new Error(`console-connect without the app should exit 2: ${JSON.stringify(closed)}`);
+  // The orchestrator console runs a tool in the main project folder and lists CLI activity.
+  await evaluate("document.querySelector('[data-action=open-orchestrator]').click()");
+  if (!(await evaluate("document.querySelector('.breadcrumb-current')?.textContent === 'Orchestrator' && document.querySelector('.cli-activity')?.innerText.includes('Created')"))) {
+    throw new Error('The orchestrator view did not open with CLI activity.');
+  }
+  await evaluate("document.querySelector('#orchestrator-tool').value = 'codex'; document.querySelector('[data-action=start-orchestrator]').click()");
+  for (let attempt = 0; attempt < 50; attempt++) {
+    if (await evaluate("Boolean(document.querySelector('#orchestrator-terminal .xterm')) && document.querySelector('.session-state')?.textContent === 'Session ended'")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await evaluate("Boolean(document.querySelector('#orchestrator-terminal .xterm')) && document.querySelector('.session-state')?.textContent === 'Session ended' && document.querySelector('.session-place')?.textContent === 'Main folder · no worktree'"))) {
+    throw new Error(`The orchestrator console did not run: ${await evaluate("document.querySelector('.notice')?.innerText ?? document.querySelector('.desk-content')?.innerText.slice(0, 300)")}`);
+  }
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/orchestrator.png', Buffer.from(captured.data, 'base64'));
+  }
+  await evaluate("document.querySelector('.task-link')?.click()");
   // The owner sets the team's assigning rule from the Team section; the host records it.
   await evaluate("(() => { const select = document.querySelector('#assigning-rule'); select.value = 'leads'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
   for (let attempt = 0; attempt < 30; attempt++) {

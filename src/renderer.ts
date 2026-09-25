@@ -32,6 +32,7 @@ declare global {
       validateRepository(input: { repositoryPath: string; workspaceRepository: string }): Promise<string>;
       prepareDecision(input: WorkspaceInput & { decisionId: string; repositoryPath: string }): Promise<string>;
       runTask(input: WorkspaceInput & { taskId: string; tool: string; repositoryPath: string }): Promise<{ directory: string }>;
+      runOrchestrator(input: { repositoryPath: string; workspaceRepository: string; tool: string }): Promise<{ directory: string }>;
       setTerminalSharing(input: { taskId: string; enabled: boolean }): Promise<void>;
       watchTerminal(input: { url: string; token: string; taskId: string }): Promise<void>;
       stopWatchingTerminal(input: { taskId: string }): void;
@@ -79,6 +80,22 @@ let keyboardMove = false;
 // Focus mode (F) on the console tab: sidebar as dots, title in the top bar, the well edge to edge.
 let consoleFocus = false;
 let decliningTaskId: string | null = null;
+// The orchestrator console (orchestrator ADR Q5): one per app, in the linked main folder, with its own terminal.
+const orchestratorKey = 'orchestrator';
+let showOrchestrator = false;
+type OrchestratorSession = { tool: string; workspaceId: string; directory: string; startedAt: number; endedAt: number; active: boolean; output: string; lastOutputAt: number };
+let orchestrator = null as OrchestratorSession | null;
+let orchestratorTerminal: Terminal | null = null;
+let orchestratorFit: FitAddon | null = null;
+const cliActivity: Array<{ at: number; text: string; tool?: string }> = [];
+const cliActivityLimit = 8;
+// Reads are logged as what was read; changes log the app's own confirmation line.
+function activityLabel(argv: string[], text: string) {
+  const reads: Record<string, string> = { 'brief': 'Read the brief', 'task list': 'Listed open tasks', 'task show': 'Read a task', 'package show': 'Read a work package' };
+  return reads[argv.slice(0, 2).join(' ')] ?? reads[argv[0] ?? ''] ?? text.split('\n')[0]!.slice(0, 140);
+}
+let cliFolderPath = '';
+void window.consoleConnect.cliFolder().then(path => { cliFolderPath = path; if (view === 'settings') render(); });
 let requestingChangesTaskId: string | null = null;
 // Reviews a tool proposed through console-connect; each waits for the person's click (orchestrator ADR Q4).
 let reviewProposals: ReviewProposal[] = [];
@@ -332,7 +349,7 @@ function renderSettings() {
   const theme = loadTheme();
   app.innerHTML = `<main class="settings-page"><header class="dashboard-header"><div class="brand">CONSOLE <b>CONNECT</b></div><button class="text-button" data-action="settings-back">Back</button></header><div class="settings-body"><h1>Settings</h1><section class="settings-section"><h2>Appearance</h2><p class="description">Choose the color theme for this computer.</p><label>Theme<select id="theme">${themes.map(item => `<option value="${item.id}" ${item.id === theme.id ? 'selected' : ''}>${escape(item.name)}</option>`).join('')}</select></label><label class="chat-setting-check"><input id="press-sound" type="checkbox" ${pressSoundEnabled() ? 'checked' : ''}>Play a soft click when pressing buttons</label></section><section class="settings-section"><h2>Supabase connection</h2><p class="description">These defaults fill the forms when you add or join a hosted project. Existing projects keep their own connection.</p><form id="supabase-settings"><label>Project URL<input name="projectUrl" type="url" placeholder="https://your-project.supabase.co" value="${escape(supabaseDefaults.projectUrl)}"></label><label>Publishable key<input name="publishableKey" value="${escape(supabaseDefaults.publishableKey)}"></label><button type="submit">Save connection defaults</button></form></section>${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main>`;
   document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', '<section class="settings-section"><h2>Account</h2><p class="description">Connect a GitHub or Google account to keep access to hosted projects across computers. Existing projects stay linked to your current identity.</p><div class="oauth-actions"><button class="secondary" data-action="sign-in-github">Connect GitHub</button><button class="secondary" data-action="sign-in-google">Connect Google</button></div></section>');
-  document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', `<section class="settings-section"><h2>Team chat notifications</h2><p class="description">Unread messages still appear in the app when desktop notifications are muted.</p><label class="chat-setting-check"><input id="chat-notifications-enabled" type="checkbox" ${chatNotifications.enabled ? 'checked' : ''}>Show desktop notifications when the app is in the background</label><label class="chat-setting-check"><input id="chat-notifications-preview" type="checkbox" ${chatNotifications.showPreview ? 'checked' : ''}>Include message text in desktop notifications</label></section>`);
+  document.querySelector('.settings-body')?.insertAdjacentHTML('beforeend', `<section class="settings-section"><h2>Command line</h2><p>Use <code>console-connect</code> from any terminal or AI tool while this app is open. Consoles inside the app already have it. For other terminals, add this folder to your PATH.</p><div class="cli-folder"><input readonly aria-label="console-connect folder" value="${escape(cliFolderPath)}"><button class="secondary" data-action="copy-cli-folder">Copy folder</button></div></section><section class="settings-section"><h2>Team chat notifications</h2><p class="description">Unread messages still appear in the app when desktop notifications are muted.</p><label class="chat-setting-check"><input id="chat-notifications-enabled" type="checkbox" ${chatNotifications.enabled ? 'checked' : ''}>Show desktop notifications when the app is in the background</label><label class="chat-setting-check"><input id="chat-notifications-preview" type="checkbox" ${chatNotifications.showPreview ? 'checked' : ''}>Include message text in desktop notifications</label></section>`);
 }
 
 async function request(path: string, body?: unknown, target = connection) {
@@ -520,7 +537,11 @@ function taskBody(task: Task) {
 const toolNames: Record<string, string> = { codex: 'Codex', claude: 'Claude Code', antigravity: 'Antigravity' };
 
 function elapsedLabel() {
-  const seconds = Math.max(0, Math.floor(((terminalSessionActive ? Date.now() : terminalEndedAt) - terminalStartedAt) / 1000));
+  return elapsedFrom(terminalStartedAt, terminalSessionActive ? Date.now() : terminalEndedAt);
+}
+
+function elapsedFrom(start: number, end: number) {
+  const seconds = Math.max(0, Math.floor((end - start) / 1000));
   const clock = (value: number) => String(value).padStart(2, '0');
   const hours = Math.floor(seconds / 3600);
   return hours ? `${hours}:${clock(Math.floor(seconds / 60) % 60)}:${clock(seconds % 60)}` : `${Math.floor(seconds / 60)}:${clock(seconds % 60)}`;
@@ -581,6 +602,50 @@ function sessionRailMarkup(task: Task) {
   const canDraft = task.assigneeId === snapshot?.memberId && ['running', 'changes_requested'].includes(task.status);
   return `<section><h2 class="section-label">This session</h2>${state}<p class="rail-meta">Started ${relativeTime(terminalStartedAt)} on this computer</p>${terminalDirectory ? `<p class="rail-meta rail-path" title="${escape(terminalDirectory)}">${escape(terminalDirectory)}</p>` : ''}</section><section><h2 class="section-label">Changed files</h2><div class="session-files">${changedFilesMarkup()}</div></section>${canDraft ? '<section><button class="rail-draft" data-action="task-tab" data-tab="package">Draft work package</button><p class="rail-meta">Stays private until you submit.</p></section>' : ''}`;
 }
+
+function orchestratorMarkup() {
+  const session = orchestrator?.workspaceId === snapshot?.workspace.id ? orchestrator : null;
+  const tools = Object.entries(toolNames).map(([id, name]) => `<option value="${id}" ${id === (session?.tool ?? 'codex') ? 'selected' : ''}>${name}</option>`).join('');
+  const launch = session?.active ? '' : `<div class="console-launch"><select id="orchestrator-tool" aria-label="Choose tool">${tools}</select><button data-action="start-orchestrator">${session ? 'New console' : 'Open orchestrator'}</button></div>`;
+  const strip = `<div class="session-strip">${session ? `<span class="session-tool">${escape(toolNames[session.tool] ?? session.tool)}</span><span class="session-place" title="${escape(session.directory)}">Main folder · no worktree</span><span class="session-elapsed">${elapsedFrom(session.startedAt, session.active ? Date.now() : session.endedAt)}</span>` : ''}<span class="session-state">${session ? session.active ? 'Session running' : 'Session ended' : 'No console'}</span><span class="session-spacer"></span>${session?.active ? '<button class="text-button session-stop" data-action="stop-orchestrator">Stop</button>' : ''}${launch}</div>`;
+  const body = session ? '<div id="orchestrator-terminal" aria-label="Orchestrator console output"></div>'
+    : '<div class="console-empty"><p>Run Codex, Antigravity, or Claude Code in your main project folder, with console-connect ready. It plans, hands out, and follows work as you. Accepting work and approving decisions still need your click.</p></div>';
+  return `<h1>Orchestrator</h1><div class="meta"><span>Acts as ${escape(snapshot!.members.find(member => member.id === snapshot!.memberId)?.name ?? 'you')}</span><span aria-hidden="true">·</span><span>Main project folder</span></div><div class="task-tab-content"><section class="console-workspace">${strip}${body}</section></div>`;
+}
+
+function orchestratorRailMarkup() {
+  const handedOut = assignedByMeMarkup();
+  const activity = cliActivity.length
+    ? cliActivity.map(item => `<div class="activity-item"><span>${escape(item.text)}</span><small>${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(item.at)}${item.tool ? ` · ${viaLabel(item.tool)}` : ''}</small></div>`).join('')
+    : '<p class="rail-meta">Nothing yet. Commands your tool runs through console-connect show here.</p>';
+  return `${handedOut || '<section class="assigned-by-me"><div class="section-head"><span class="section-label">Assigned by me</span></div><p class="rail-meta">Nothing handed out yet. Tasks you or your orchestrator assign show up here, grouped by where they stand.</p></section>'}<section class="cli-activity"><div class="section-head"><span class="section-label">CLI activity</span></div>${activity}</section>`;
+}
+
+function mountOrchestratorTerminal() {
+  const container = document.querySelector<HTMLElement>('#orchestrator-terminal');
+  if (!container || !orchestrator) return;
+  if (orchestratorTerminal?.element) {
+    container.append(orchestratorTerminal.element);
+  } else {
+    orchestratorTerminal = new Terminal({ theme: loadTheme().terminal, fontFamily: terminalFontFamily, fontSize: 13, cursorBlink: orchestrator.active });
+    orchestratorFit = new FitAddon();
+    orchestratorTerminal.loadAddon(orchestratorFit);
+    orchestratorTerminal.open(container);
+    orchestratorTerminal.write(orchestrator.output);
+    orchestratorTerminal.onData(data => { if (orchestrator?.active) window.consoleConnect.terminalWrite({ taskId: orchestratorKey, data }); });
+  }
+  orchestratorTerminal.options.theme = loadTheme().terminal;
+  orchestratorFit?.fit();
+  if (orchestrator.active) window.consoleConnect.terminalResize({ taskId: orchestratorKey, cols: orchestratorTerminal.cols, rows: orchestratorTerminal.rows });
+  orchestratorResizeObserver.disconnect();
+  orchestratorResizeObserver.observe(container);
+}
+
+const orchestratorResizeObserver = new ResizeObserver(() => {
+  if (!orchestratorTerminal?.element?.isConnected || !orchestratorFit) return;
+  orchestratorFit.fit();
+  if (orchestrator?.active) window.consoleConnect.terminalResize({ taskId: orchestratorKey, cols: orchestratorTerminal.cols, rows: orchestratorTerminal.rows });
+});
 
 const terminalFontFamily = "'JetBrains Mono', Consolas, monospace";
 const chatGroupWindowMs = 5 * 60 * 1000;
@@ -648,7 +713,7 @@ function render() {
   const renderedTask = snapshot?.tasks.find(task => task.id === selectedTaskId) ?? snapshot?.tasks[0];
   const nextTerminalSource = renderedTask?.id === terminalTaskId ? 'local'
     : renderedTask?.id === watchedTaskId ? 'shared' : null;
-  const keepTerminal = Boolean(terminal && view === 'review' && taskTab === 'console' && !showWorkspaceChat
+  const keepTerminal = Boolean(terminal && view === 'review' && taskTab === 'console' && !showWorkspaceChat && !showOrchestrator
     && renderedTask?.id === terminalRenderedTaskId && nextTerminalSource === terminalRenderSource);
   const terminalHadFocus = keepTerminal && terminal?.element?.contains(document.activeElement);
   if (!keepTerminal) {
@@ -668,8 +733,8 @@ function render() {
   const selected = snapshot.tasks.find(task => task.id === selectedTaskId) ?? snapshot.tasks[0];
   const me = snapshot.members.find(member => member.id === snapshot!.memberId);
   const unread = unreadTeamMessages();
-  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(sentenceCase(task.status))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
-  document.querySelector('.desk-content')?.classList.toggle('console-active', taskTab === 'console' && !showWorkspaceChat);
+  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(sentenceCase(task.status))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || showOrchestrator || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : showOrchestrator ? 'Orchestrator' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
+  document.querySelector('.desk-content')?.classList.toggle('console-active', (taskTab === 'console' && !showWorkspaceChat) || showOrchestrator);
   document.querySelector('.topbar div')!.innerHTML = `<button class="text-button topbar-jump" data-action="open-palette" title="Jump to a task, person, or action">Jump<kbd>Ctrl</kbd><kbd>K</kbd></button><button class="secondary topbar-chat" data-action="open-chat-drawer" title="Team chat (C)">Chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button><button class="text-button" data-action="disconnect">Projects</button>`;
   if (me?.role !== 'owner') document.querySelector('.invite')?.remove();
   if (showInviteForm && me?.role === 'owner') {
@@ -685,10 +750,15 @@ function render() {
     invite.insertAdjacentHTML('beforebegin', '<p class="rail-note">Hosting on this computer only. Connect a private VPN and restart Console Connect to invite teammates.</p>');
   }
   document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link ${showWorkspaceChat ? 'active' : ''}" data-action="workspace-chat">Team chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button>`);
+  document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link orchestrator-link ${showOrchestrator ? 'active' : ''}" data-action="open-orchestrator">Orchestrator${orchestrator?.active && orchestrator.workspaceId === snapshot.workspace.id ? '<i class="status-dot status-running" aria-label="running"></i>' : ''}</button>`);
   if (showWorkspaceChat) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
     document.querySelector('.desk-content')!.classList.add('chat-page');
     document.querySelector('.desk-content')!.innerHTML = `${chatRoomMarkup()}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}`;
+  } else if (showOrchestrator) {
+    document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
+    document.querySelector('.desk-content')!.innerHTML = `${orchestratorMarkup()}${notice ? `<p class="notice" role="status">${escape(notice)}</p>` : ''}`;
+    mountOrchestratorTerminal();
   } else if (selected) {
     if (taskTab === 'package' && selected.pendingDecisionIds?.length) {
       const mine = selected.assigneeId === snapshot.memberId;
@@ -749,7 +819,9 @@ function render() {
   }
   document.querySelector('.right-rail')!.insertAdjacentHTML('beforeend', assignedByMeMarkup());
   document.querySelector('.right-rail')!.insertAdjacentHTML('beforeend', `<section class="decisions"><div class="section-head"><span class="section-label">Decisions</span><button class="text-button" data-action="propose-decision">${plusIcon}Propose</button></div>${snapshot.decisions.map(decision => `<div class="decision"><div class="decision-head"><strong>${escape(decision.title)}</strong><span class="decision-status decision-status-${decision.status}">${escape(decision.status.charAt(0).toUpperCase() + decision.status.slice(1))}</span></div><p>${escape(decision.body)}</p>${decision.documentCommit ? `<small>Commit ${escape(decision.documentCommit.slice(0, 12))}</small>` : ''}${decision.status === 'proposed' && me?.role !== 'contributor' ? decisionStep(decision.id, me?.role === 'owner') : ''}</div>`).join('')}</section>`);
-  if (selected && taskTab === 'console' && !showWorkspaceChat) {
+  if (showOrchestrator) {
+    document.querySelector('.right-rail')!.innerHTML = orchestratorRailMarkup();
+  } else if (selected && taskTab === 'console' && !showWorkspaceChat) {
     if (consoleFocus) {
       document.querySelector('.workspace')!.classList.add('workspace-focus');
       document.querySelector('.breadcrumb')!.insertAdjacentHTML('beforeend', document.querySelector('.desk-content .status-pill')?.outerHTML ?? '');
@@ -779,7 +851,7 @@ function render() {
   }
   const chatStream = document.querySelector<HTMLElement>('#team-chat-stream');
   if (chatStream) chatStream.scrollTop = chatWasAtBottom ? chatStream.scrollHeight : previousChatScroll;
-  const deskKey = `${selected?.id}|${taskTab}|${showWorkspaceChat}`;
+  const deskKey = `${selected?.id}|${taskTab}|${showWorkspaceChat}|${showOrchestrator}`;
   regionScrollSelectors.forEach((selector, index) => {
     const region = document.querySelector(selector);
     if (region && (selector !== '.desk' || deskKey === renderedDeskKey)) region.scrollTop = previousRegionScroll[index] ?? 0;
@@ -958,6 +1030,7 @@ function paletteItems(): PaletteItem[] {
   const actions: PaletteItem[] = [
     { label: 'New task', kind: 'Action', hint: 'N', run: () => clickAction('[data-action=new-task]') },
     { label: 'Open team chat', kind: 'Action', hint: 'C', run: () => clickAction('[data-action=open-chat-drawer]') },
+    { label: 'Open orchestrator', kind: 'Action', run: () => clickAction('[data-action=open-orchestrator]') },
     { label: 'Propose decision', kind: 'Action', run: () => clickAction('[data-action=propose-decision]') },
     { label: 'Invite member', kind: 'Action', run: () => clickAction('[data-action=invite]') },
     { label: 'Projects', kind: 'Action', run: () => clickAction('.topbar [data-action=disconnect]') },
@@ -985,10 +1058,9 @@ document.addEventListener('keydown', event => {
     openPalette(paletteItems());
     return;
   }
-  if (event.ctrlKey && event.key === '`' && terminal?.element?.isConnected) {
-    event.preventDefault();
-    terminal.focus();
-    return;
+  if (event.ctrlKey && event.key === '`') {
+    const target = showOrchestrator ? orchestratorTerminal : terminal;
+    if (target?.element?.isConnected) { event.preventDefault(); target.focus(); return; }
   }
   if (event.ctrlKey || event.metaKey || event.altKey || typingTarget(event.target)) return;
   const tasks = snapshot.tasks;
@@ -1015,7 +1087,7 @@ app.addEventListener('click', async event => {
   if (button.dataset.task) {
     if (watchedTaskId && watchedTaskId !== button.dataset.task) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
     if (selectedTaskId !== button.dataset.task) taskTab = 'overview';
-    selectedTaskId = button.dataset.task; showWorkspaceChat = false; render(); return;
+    selectedTaskId = button.dataset.task; showWorkspaceChat = false; showOrchestrator = false; render(); return;
   }
   const action = button.dataset.action;
   const task = snapshot?.tasks.find(item => item.id === selectedTaskId) ?? snapshot?.tasks[0];
@@ -1096,7 +1168,7 @@ app.addEventListener('click', async event => {
       currentInvitationLink = '';
       snapshot = null;
       selectedTaskId = null;
-      showWorkspaceChat = false; showChatDrawer = false;
+      showWorkspaceChat = false; showChatDrawer = false; showOrchestrator = false;
       view = 'review';
       notice = '';
       localStorage.setItem('console-connect.connection', JSON.stringify(connection));
@@ -1107,7 +1179,7 @@ app.addEventListener('click', async event => {
     }
     if (action === 'workspace-chat') {
       if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
-      showWorkspaceChat = true; showChatDrawer = false; markTeamChatRead(); render(); return;
+      showWorkspaceChat = true; showOrchestrator = false; showChatDrawer = false; markTeamChatRead(); render(); return;
     }
     if (action === 'task-tab') { taskTab = button.dataset.tab as TaskTab; render(); return; }
     if (action === 'disconnect') {
@@ -1129,7 +1201,7 @@ app.addEventListener('click', async event => {
       render();
       return;
     }
-    if (action === 'new-task') { showWorkspaceChat = false; document.querySelector('.desk-content')!.innerHTML = `<h1>New task</h1><form id="new-task"><label>Title<input name="title" required></label><label>Description<textarea name="description"></textarea></label><label>Assign to<select name="assigneeId"><option value="">Unassigned</option>${snapshot!.members.map(member => `<option value="${member.id}">${escape(member.name)}</option>`).join('')}</select></label><button type="submit">Create task</button></form>`; return; }
+    if (action === 'new-task') { showWorkspaceChat = false; showOrchestrator = false; document.querySelector('.desk-content')!.innerHTML = `<h1>New task</h1><form id="new-task"><label>Title<input name="title" required></label><label>Description<textarea name="description"></textarea></label><label>Assign to<select name="assigneeId"><option value="">Unassigned</option>${snapshot!.members.map(member => `<option value="${member.id}">${escape(member.name)}</option>`).join('')}</select></label><button type="submit">Create task</button></form>`; return; }
     if (action === 'propose-decision') {
       document.querySelector('.desk-content')!.innerHTML = `<h1>Propose decision</h1><form id="decision"><label>Title<input name="title" required></label><label>Decision<textarea name="body" required></textarea></label><label>Replaces<select name="supersedesId"><option value="">No previous decision</option>${snapshot!.decisions.filter(item => item.status === 'official').map(item => `<option value="${item.id}">${escape(item.title)}</option>`).join('')}</select></label><fieldset><legend>Affected tasks</legend>${snapshot!.tasks.map(item => `<label><input type="checkbox" name="affectedTaskIds" value="${item.id}">${escape(item.title)}</label>`).join('')}</fieldset><button type="submit">Share proposal</button></form>`;
       return;
@@ -1208,6 +1280,26 @@ app.addEventListener('click', async event => {
       try { terminalDirectory = (await window.consoleConnect.runTask({ ...access, taskId: task.id, tool, repositoryPath })).directory; }
       catch (error) { terminalTaskId = null; terminalSessionActive = false; throw error; }
       await refresh();
+    }
+    if (action === 'copy-cli-folder') { await window.consoleConnect.copyText(cliFolderPath); notice = 'Folder copied.'; render(); return; }
+    if (action === 'open-orchestrator') {
+      if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
+      showOrchestrator = true; showWorkspaceChat = false; render(); return;
+    }
+    if (action === 'start-orchestrator') {
+      const repositoryPath = await currentProjectFolder();
+      if (!repositoryPath) return;
+      const tool = document.querySelector<HTMLSelectElement>('#orchestrator-tool')!.value;
+      orchestratorTerminal?.dispose(); orchestratorTerminal = null; orchestratorFit = null;
+      const started = { tool, workspaceId: snapshot!.workspace.id, directory: '', startedAt: Date.now(), endedAt: 0, active: true, output: '', lastOutputAt: Date.now() };
+      orchestrator = started;
+      try { started.directory = (await window.consoleConnect.runOrchestrator({ repositoryPath, workspaceRepository: snapshot!.workspace.repository, tool })).directory; }
+      catch (error) { orchestrator = null; throw error; }
+      render(); return;
+    }
+    if (action === 'stop-orchestrator') {
+      if (confirm('Stop the orchestrator console? The tool ends.')) window.consoleConnect.terminalKill({ taskId: orchestratorKey });
+      return;
     }
     if (action === 'proposal-dismiss') { reviewProposals.shift(); editingProposal = false; render(); return; }
     if (action === 'proposal-edit') { editingProposal = true; render(); document.querySelector<HTMLTextAreaElement>('#proposal-note')?.focus(); return; }
@@ -1304,6 +1396,9 @@ window.consoleConnect.onCliRequest(async request => {
     const tool = toolSchema.safeParse(request.tool);
     const result = await runCliCommand(request.argv, { cwd: request.cwd, taskId: request.taskId, tool: tool.success ? tool.data : undefined }, cliWorkspace);
     window.consoleConnect.replyToCli({ id: request.id, reply: { ok: true, ...result } });
+    cliActivity.unshift({ at: Date.now(), text: activityLabel(request.argv, result.text), tool: tool.success ? tool.data : undefined });
+    cliActivity.length = Math.min(cliActivity.length, cliActivityLimit);
+    if (showOrchestrator) render();
   } catch (error) {
     window.consoleConnect.replyToCli({ id: request.id, reply: { ok: false, error: (error as Error).message } });
   }
@@ -1319,12 +1414,25 @@ window.addEventListener('focus', () => {
   if (snapshot && view === 'review' && (showWorkspaceChat || showChatDrawer)) { markTeamChatRead(); render(); }
 });
 window.consoleConnect.onTerminalData(event => {
+  if (event.taskId === orchestratorKey && orchestrator) {
+    orchestrator.output = (orchestrator.output + event.data).slice(-100000);
+    orchestrator.lastOutputAt = Date.now();
+    orchestratorTerminal?.write(event.data);
+    return;
+  }
   if (event.taskId !== terminalTaskId) return;
   terminalOutput = (terminalOutput + event.data).slice(-100000);
   terminalLastOutputAt = Date.now();
   if (terminalRenderSource === 'local') terminal?.write(event.data);
 });
 window.consoleConnect.onTerminalExit(event => {
+  if (event.taskId === orchestratorKey && orchestrator) {
+    const line = `\r\nProcess exited (${event.exitCode}).\r\n`;
+    orchestrator.active = false; orchestrator.endedAt = Date.now(); orchestrator.output += line;
+    orchestratorTerminal?.write(line);
+    render();
+    return;
+  }
   if (event.taskId !== terminalTaskId) return;
   terminalSessionActive = false;
   terminalEndedAt = Date.now();
