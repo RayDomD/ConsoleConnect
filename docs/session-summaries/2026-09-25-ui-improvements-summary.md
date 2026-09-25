@@ -39,6 +39,15 @@ Phase 1, one commit per item:
 - `npm run check:hosted-schema`: pass (Phase 0).
 - `/impeccable critique` once: 25/40, 0 P0, 1 P1 (status casing). `/impeccable audit` once: 15/20. Detector ran in degraded regex mode (parser modules missing), so its 33 findings are a floor.
 
+## After the critique
+
+The user chose to fix the P1 and P2 findings, label the session status, and commit the critique snapshot.
+
+- P1: statuses and roles are sentence case everywhere (`sentenceCase` helper; two `text-transform:capitalize` rules removed).
+- P2: the strip says "Session running" or "Session ended"; Stop uses the danger colour and sits apart from the Session and Focus toggles; a Jump (Ctrl K) button in the top bar opens the palette, and tabs and Chat show their keys in tooltips. The Jump button is an addition to the P2 top bar mockup. The strip stays one line on desktop and truncates the branch prefix before the task ID.
+- Polish: palette hint contrast fixed, themed scrollbars, status dot and drawn plus icon instead of glyphs, the `.decision-alert` side stripe replaced with a tint, dead hex shadows removed, palette rows on the type ramp. Detector findings 44 to 40, with the side-stripe rule now clear.
+- Rechecked: build, 36 tests, smoke, and an 820px narrow layout with no horizontal overflow.
+
 ## Open observations
 
 - During one failed harness run, the team chat drawer opened while a native folder picker was up, with focus in its textarea; no script action requested it. It did not recur. Not investigated further to avoid reopening native dialogs.
