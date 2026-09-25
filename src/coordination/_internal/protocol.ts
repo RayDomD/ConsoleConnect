@@ -20,6 +20,8 @@ export interface Task {
   /** Reported by the worker's app when its session waits on the person or exits without a package. */
   stall?: { reason: 'needs_input' | 'exited'; at: string };
   pullRequestStatus?: PullRequestStatus; pendingDecisionIds?: string[];
+  /** Tasks that must be accepted or completed before this one starts (guided path ADR Q21). */
+  after?: string[];
 }
 export interface WorkPackage {
   summary: string; sourceRef: string; pullRequestUrl?: string;
@@ -62,7 +64,8 @@ const revision = z.number().int().positive();
 const commandBase = { id: identifier, via: toolSchema.optional() };
 export const commandSchema = z.discriminatedUnion('type', [
   z.object({ ...commandBase, type: z.literal('create-task'), taskId: identifier,
-    title: z.string().trim().min(1).max(160), description: z.string().max(32000), assigneeId: identifier.nullable() }),
+    title: z.string().trim().min(1).max(160), description: z.string().max(32000), assigneeId: identifier.nullable(),
+    after: z.array(identifier).max(100).optional() }),
   z.object({ ...commandBase, type: z.literal('approve-task'), taskId: identifier, revision }),
   z.object({ ...commandBase, type: z.literal('set-assigning-rule'), rule: assigningRuleSchema }),
   z.object({ ...commandBase, type: z.literal('decline-task'), taskId: identifier, revision, note: z.string().trim().max(8000).optional() }),

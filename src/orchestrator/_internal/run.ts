@@ -155,9 +155,11 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
       const title = named.title?.trim();
       if (!title) throw new CliError('Give the task a --title.');
       const assignee = named.assignee ? findMember(state, named.assignee) : null;
+      const after = named.after ? named.after.split(',').filter(ref => ref.trim()).map(ref => findTask(state, ref.trim()).id) : [];
       if (assignee && context.holdAssignments) return hold(`Create "${title}" for ${assignee.name}`);
       const taskId = crypto.randomUUID();
-      await send(null, { type: 'create-task', taskId, title, description: named.description ?? '', assigneeId: assignee?.id ?? null });
+      await send(null, { type: 'create-task', taskId, title, description: named.description ?? '', assigneeId: assignee?.id ?? null,
+        ...(after.length ? { after } : {}) });
       return { text: `Created ${shortId(taskId)} "${title}" as ${me.name}${assignee ? `, assigned to ${assignee.name}` : ''}.`, data: { taskId } };
     }
     if (verb === 'assign') {

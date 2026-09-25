@@ -77,3 +77,22 @@ test('changing the size keeps what was passed; Write it up needs an approved spe
   expect((await send(sam.token, { type: 'delete-idea', ideaId })).status).toBe(200);
   expect(await idea(host.token, ideaId)).toBeUndefined();
 });
+
+test('a task with blockers waits to start until each blocker is accepted', async () => {
+  const { host, sam, send, call } = await team();
+  const [schema, api] = [randomUUID(), randomUUID()];
+  await send(host.token, { type: 'create-task', taskId: schema, title: 'Expiry column', description: '', assigneeId: sam.memberId });
+  expect((await send(host.token, { type: 'create-task', taskId: randomUUID(), title: 'Bad', description: '', assigneeId: null, after: [randomUUID()] })).status).toBe(400);
+  await send(host.token, { type: 'create-task', taskId: api, title: 'Expiry check', description: '', assigneeId: sam.memberId, after: [schema] });
+  const task = async (id: string) => (await call(host.token, '/state')).data.tasks.find((item: { id: string }) => item.id === id);
+  expect((await task(api)).after).toEqual([schema]);
+  await send(sam.token, { type: 'approve-task', taskId: api, revision: 1 });
+  const refused = await send(sam.token, { type: 'start-task', taskId: api, revision: 2, tool: 'codex' });
+  expect(refused).toMatchObject({ status: 409, data: { error: 'Waiting on Expiry column.' } });
+  await send(sam.token, { type: 'approve-task', taskId: schema, revision: 1 });
+  await send(sam.token, { type: 'start-task', taskId: schema, revision: 2, tool: 'codex' });
+  await send(sam.token, { type: 'save-package', taskId: schema, revision: 3, summary: 'Added', sourceRef: 'abc', deliverables: [], verification: '', questions: '' });
+  await send(sam.token, { type: 'submit-package', taskId: schema, revision: 4 });
+  expect((await send(host.token, { type: 'accept-package', taskId: schema, revision: 5 })).status).toBe(200);
+  expect((await send(sam.token, { type: 'start-task', taskId: api, revision: 2, tool: 'codex' })).status).toBe(200);
+});

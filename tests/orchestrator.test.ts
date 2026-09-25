@@ -45,6 +45,12 @@ describe('console-connect commands in the app', () => {
     expect(result.text).toMatch(/^Created [0-9a-f]{8} "Invite email copy" as Blair, assigned to Sam\.$/);
   });
 
+  test('task create --after takes blocker ids by prefix, comma separated', async () => {
+    const { api, sent } = workspace();
+    await runCliCommand(['task', 'create', '--title', 'Retry copy', '--after', 'aa,abbb'], context, api);
+    expect(sent[0]).toMatchObject({ fields: { type: 'create-task', title: 'Retry copy', after: [login, invite] } });
+  });
+
   test('ids accept a unique prefix and reject an ambiguous one', async () => {
     const { api, sent } = workspace();
     await runCliCommand(['task', 'claim', 'aa'], context, api);

@@ -7,7 +7,8 @@ const usage = `console-connect: work in your open Console Connect project from a
   brief [--task <id>]                  The team, rules, open tasks, and what needs a click
   task list                            Open tasks
   task show <id>                       One task and its discussion
-  task create --title <t> [--description <d>] [--assignee <name>]
+  task create --title <t> [--description <d>] [--assignee <name>] [--after <id,id>]
+                                       --after: tasks that must be accepted before it starts
   task assign <id> <name>
   task claim <id>
   task decline <id> [--note <why>]

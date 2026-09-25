@@ -1,3 +1,4 @@
+import { waitingOn } from '../../blockers';
 import { ideaPaths, RequestError, type Command, type Idea, type Member, type WorkspaceState } from './protocol';
 
 // Decisions that stay with people (orchestrator ADR Q4): a tool may propose them, only a click sends them.
@@ -149,10 +150,12 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
     if (state.tasks.some(task => task.id === command.taskId)) throw new RequestError(409, 'This task already exists.');
     if (command.assigneeId && !state.members.some(member => member.id === command.assigneeId)) throw new RequestError(400, 'Choose a workspace member.');
     if (command.assigneeId && command.assigneeId !== actor.id) checkAssigningRule(state, actor);
+    if (command.after?.some(id => !state.tasks.some(task => task.id === id))) throw new RequestError(400, 'Choose existing tasks to wait on.');
     state.tasks.push({ id: command.taskId, title: command.title, description: command.description,
       authorId: actor.id, assigneeId: command.assigneeId, status: command.assigneeId ? 'awaiting_approval' : 'unassigned',
       revision: 1, createdAt: new Date().toISOString(),
-      ...(command.assigneeId ? { assignedBy: actor.id, via: command.via } : {}) });
+      ...(command.assigneeId ? { assignedBy: actor.id, via: command.via } : {}),
+      ...(command.after?.length ? { after: [...new Set(command.after)] } : {}) });
     return;
   }
   if (command.type === 'post-message') {
@@ -220,11 +223,14 @@ export function applyCommand(state: WorkspaceState, actor: Member, command: Comm
       if (task.status !== 'awaiting_approval') throw new RequestError(409, 'This task is not awaiting your approval.');
       task.status = 'ready';
       break;
-    case 'start-task':
+    case 'start-task': {
       if (task.status !== 'ready') throw new RequestError(409, 'Approve this assignment before starting work.');
+      const blocker = waitingOn(state.tasks, task);
+      if (blocker) throw new RequestError(409, `Waiting on ${blocker.title}.`);
       task.status = 'running';
       task.tool = command.tool;
       break;
+    }
     case 'save-package':
       if (task.status !== 'running' && task.status !== 'changes_requested') throw new RequestError(409, 'This task is not ready for a draft.');
       delete task.stall;
