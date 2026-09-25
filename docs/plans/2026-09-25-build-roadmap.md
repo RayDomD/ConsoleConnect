@@ -9,7 +9,7 @@ summary: Ordered build of housekeeping, P1–P9 and console workspace, orchestra
 
 ## Status & Progress Summary
 
-Phase 0 and Phase 1 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-ui-improvements-summary.md`). Phase 2 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-orchestrator-summary.md`). Phase 3 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-office-summary.md`); hosted presence and sharing still need the Supabase deploy. Next: Phase 4.0, grilling the guided path.
+Phase 0 and Phase 1 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-ui-improvements-summary.md`). Phase 2 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-orchestrator-summary.md`). Phase 3 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-office-summary.md`); hosted presence and sharing still need the Supabase deploy. Phase 4.0 grilled (ADR Q19–Q24); spec `docs/plans/2026-09-25-guided-path-spec.md`. Next: 4.1a.
 
 Everything decided on 2026-09-25 and not yet built. Handoff for fresh sessions: `.goal/2026-09-25-build.md`. Sizes are rough session estimates.
 
