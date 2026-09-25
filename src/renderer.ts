@@ -9,7 +9,7 @@ import { invitationLink, parseInvitationLink } from './invitations';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { needsInput } from './console-state';
-import { runCliCommand, type WorkspaceApi } from './orchestrator';
+import { runCliCommand, type ReviewProposal, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -78,6 +78,10 @@ let assignMenuOpen = false;
 let keyboardMove = false;
 // Focus mode (F) on the console tab: sidebar as dots, title in the top bar, the well edge to edge.
 let consoleFocus = false;
+// Reviews a tool proposed through console-connect; each waits for the person's click (orchestrator ADR Q4).
+let reviewProposals: ReviewProposal[] = [];
+let editingProposal = false;
+let shownProposalId = '';
 // Decisions whose commit field is showing: prepared this session, or opened with Enter commit.
 const commitFieldDecisionIds = new Set<string>();
 let terminalTaskId: string | null = null;
@@ -707,6 +711,13 @@ function render() {
       document.querySelector('.workspace')!.classList.add('workspace-no-rail');
     }
   }
+  if (reviewProposals.length) {
+    app.insertAdjacentHTML('beforeend', proposalMarkup());
+    if (shownProposalId !== reviewProposals[0]!.id) {
+      shownProposalId = reviewProposals[0]!.id;
+      document.querySelector<HTMLButtonElement>('[data-action=proposal-confirm]')?.focus();
+    }
+  }
   if (showChatDrawer && !showWorkspaceChat) app.insertAdjacentHTML('beforeend', `<aside class="chat-drawer" aria-label="Team chat drawer">${chatRoomMarkup(true)}</aside>`);
   if (chatToast && !showChatDrawer && !showWorkspaceChat) {
     const author = snapshot.members.find(member => member.id === chatToast!.message.authorId)?.name ?? 'Teammate';
@@ -897,7 +908,8 @@ document.addEventListener('keydown', event => {
     document.querySelector<HTMLButtonElement>('[data-action=toggle-assign-menu]')?.focus();
     return;
   }
-  if (paletteOpen() || view !== 'review' || !snapshot || event.defaultPrevented) return;
+  if (event.key === 'Escape' && reviewProposals.length) { reviewProposals.shift(); editingProposal = false; render(); return; }
+  if (reviewProposals.length || paletteOpen() || view !== 'review' || !snapshot || event.defaultPrevented) return;
   const key = event.key.toLowerCase();
   if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey && key === 'k') {
     if ((event.target as HTMLElement | null)?.closest?.('.xterm')) return;
@@ -1129,6 +1141,14 @@ app.addEventListener('click', async event => {
       catch (error) { terminalTaskId = null; terminalSessionActive = false; throw error; }
       await refresh();
     }
+    if (action === 'proposal-dismiss') { reviewProposals.shift(); editingProposal = false; render(); return; }
+    if (action === 'proposal-edit') { editingProposal = true; render(); document.querySelector<HTMLTextAreaElement>('#proposal-note')?.focus(); return; }
+    if (action === 'proposal-switch') {
+      const proposal = reviewProposals[0];
+      if (proposal) { proposal.note = document.querySelector<HTMLTextAreaElement>('#proposal-note')?.value ?? proposal.note; proposal.action = proposal.action === 'accept' ? 'changes' : 'accept'; }
+      render(); return;
+    }
+    if (action === 'proposal-confirm') { await confirmProposal(); return; }
     if (action === 'open-palette') { openPalette(paletteItems()); return; }
     if (action === 'focus-terminal') { terminal?.focus(); return; }
     if (action === 'toggle-console-focus') { consoleFocus = !consoleFocus; keyboardMove = true; render(); return; }
@@ -1177,7 +1197,36 @@ const cliWorkspace: WorkspaceApi = {
     if (taskId && !task) throw new Error('Task not found.');
     await command(task, fields);
   },
+  propose: proposal => { reviewProposals.push(proposal); render(); },
 };
+
+function proposalMarkup() {
+  const proposal = reviewProposals[0];
+  const task = proposal && snapshot?.tasks.find(item => item.id === proposal.taskId);
+  if (!proposal || !task) return '';
+  const tool = proposal.via ? toolNames[proposal.via] ?? proposal.via : 'Your tool';
+  const owner = snapshot!.members.find(member => member.id === task.assigneeId)?.name ?? 'the assignee';
+  const accept = proposal.action === 'accept';
+  const note = editingProposal
+    ? `<label class="proposal-note">Review note<textarea id="proposal-note">${escape(proposal.note)}</textarea></label>`
+    : proposal.note ? `<blockquote class="proposal-quote">${escape(proposal.note)}</blockquote>` : '';
+  return `<div class="proposal-backdrop"><section class="proposal" role="dialog" aria-modal="true" aria-labelledby="proposal-title"><p class="proposal-label">Needs your confirmation${proposal.via ? ` · ${viaLabel(proposal.via)}` : ''}</p><h2 id="proposal-title">${accept ? 'Accept' : 'Request changes to'} "${escape(task.title)}"?</h2><p class="proposal-why">${escape(tool)} read ${escape(owner)}'s work package and prepared this review. Nothing is sent until you confirm.${accept ? ' GitHub pull request approval stays separate.' : ''}</p>${note}<div class="proposal-actions"><button class="text-button" data-action="proposal-dismiss">Not now</button><span class="session-spacer"></span>${editingProposal ? '' : '<button class="secondary" data-action="proposal-edit">Edit review</button>'}<button class="secondary" data-action="proposal-switch">${accept ? 'Request changes instead' : 'Accept instead'}</button><button data-action="proposal-confirm">${accept ? 'Accept package' : 'Request changes'}</button></div>${reviewProposals.length > 1 ? `<p class="proposal-more">${reviewProposals.length - 1} more waiting</p>` : ''}</section></div>`;
+}
+
+async function confirmProposal() {
+  const proposal = reviewProposals[0];
+  if (!proposal) return;
+  const task = snapshot?.tasks.find(item => item.id === proposal.taskId);
+  const note = (document.querySelector<HTMLTextAreaElement>('#proposal-note')?.value ?? proposal.note).trim();
+  if (!task || task.status !== 'submitted') { reviewProposals.shift(); editingProposal = false; notice = 'That package changed since the review was proposed.'; render(); return; }
+  if (proposal.action === 'changes' && !note) { editingProposal = true; notice = 'Say what needs to change.'; render(); return; }
+  // The click sends the review as the person, never marked with the tool.
+  if (proposal.action === 'accept') {
+    await command(task, { type: 'accept-package' });
+    if (note) await command(null, { type: 'post-message', taskId: task.id, body: note, ...(proposal.via ? { via: proposal.via } : {}) });
+  } else await command(task, { type: 'request-changes', note });
+  reviewProposals.shift(); editingProposal = false; render();
+}
 window.consoleConnect.onCliRequest(async request => {
   try {
     const tool = toolSchema.safeParse(request.tool);

@@ -335,3 +335,21 @@ test('work handed out through a tool is recorded as the person, marked with the 
   expect(reassigned).toMatchObject({ assignedBy: alex });
   expect(reassigned.via).toBeUndefined();
 });
+
+test('accepting, requesting changes, and approving need a person, never a tool', async () => {
+  const host = await workspace();
+  const sam = await teammate(host.url, host.token, 'contributor');
+  const send = (token: string, command: object) => api(host.url, token, '/commands', { id: randomUUID(), ...command });
+  const taskId = randomUUID();
+  await send(host.token, { type: 'create-task', taskId, title: 'Invite copy', description: '', assigneeId: sam.memberId });
+  const refused = await send(sam.token, { type: 'approve-task', taskId, revision: 1, via: 'claude' });
+  expect(refused).toMatchObject({ status: 403, data: { error: 'This needs a click in Console Connect.' } });
+  expect((await send(sam.token, { type: 'approve-task', taskId, revision: 1 })).status).toBe(200);
+  await send(sam.token, { type: 'start-task', taskId, revision: 2, tool: 'claude', via: 'claude' });
+  await send(sam.token, { type: 'save-package', taskId, revision: 3, summary: 'Copy', sourceRef: 'main', deliverables: [], verification: '', questions: '', via: 'claude' });
+  await send(sam.token, { type: 'submit-package', taskId, revision: 4, via: 'claude' });
+  for (const review of [{ type: 'accept-package' }, { type: 'request-changes', note: 'Shorter.' }]) {
+    expect((await send(host.token, { ...review, taskId, revision: 5, via: 'codex' })).status).toBe(403);
+  }
+  expect((await send(host.token, { type: 'accept-package', taskId, revision: 5 })).status).toBe(200);
+});

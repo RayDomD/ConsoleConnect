@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { CommandInput, Snapshot } from '../src/coordination';
-import { runCliCommand, type WorkspaceApi } from '../src/orchestrator';
+import { runCliCommand, type ReviewProposal, type WorkspaceApi } from '../src/orchestrator';
 
 const blair = '11111111-1111-4111-8111-111111111111';
 const sam = '22222222-2222-4222-8222-222222222222';
@@ -19,8 +19,10 @@ function workspace() {
     decisions: [],
   };
   const sent: Array<{ taskId: string | null; fields: CommandInput }> = [];
-  const api: WorkspaceApi = { snapshot: () => state, send: async (taskId, fields) => { sent.push({ taskId, fields }); } };
-  return { api, sent };
+  const proposals: ReviewProposal[] = [];
+  const api: WorkspaceApi = { snapshot: () => state, send: async (taskId, fields) => { sent.push({ taskId, fields }); },
+    propose: proposal => { proposals.push(proposal); } };
+  return { api, sent, proposals, state };
 }
 
 const context = { cwd: 'C:/work/demo', taskId: null };
@@ -68,5 +70,19 @@ describe('console-connect commands in the app', () => {
     const { api, sent } = workspace();
     await runCliCommand(['task', 'reply', 'abbb', 'On it.'], { ...context, tool: 'codex' }, api);
     expect(sent[0]!.fields).toMatchObject({ type: 'post-message', via: 'codex' });
+  });
+
+  test('review propose only queues a confirmation for the person; nothing is sent', async () => {
+    const { api, sent, proposals, state } = workspace();
+    state.tasks[1] = { ...state.tasks[1]!, status: 'submitted', package: { summary: 'Retry link', sourceRef: 'console-connect/abbb', deliverables: ['src/invitations.ts'], verification: '32 passed', questions: '' } };
+    const shown = await runCliCommand(['package', 'show', 'abbb'], context, api);
+    expect(shown.text).toContain('Retry link');
+    expect(shown.text).toContain('src/invitations.ts');
+    const result = await runCliCommand(['review', 'propose', 'abbb', '--accept', '--note', 'Tests pass.'], { ...context, tool: 'codex' }, api);
+    expect(sent).toEqual([]);
+    expect(proposals).toEqual([{ id: expect.any(String), taskId: invite, action: 'accept', note: 'Tests pass.', via: 'codex' }]);
+    expect(result.text).toBe("Proposed accepting \"Expired invite retry\". It waits for Blair's click in Console Connect.");
+    await expect(runCliCommand(['review', 'propose', 'aaaa', '--changes', '--note', 'x'], context, api)).rejects.toThrow('There is no submitted package to review.');
+    await expect(runCliCommand(['review', 'propose', 'abbb', '--note', 'x'], context, api)).rejects.toThrow('Choose --accept or --changes.');
   });
 });

@@ -295,6 +295,18 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 .workspace-focus .console-workspace #terminal{padding:14px 22px}
 }
 
+/* Review proposals from console-connect wait for a click (orchestrator 2.3) */
+.proposal-backdrop{position:fixed;inset:0;z-index:35;display:flex;justify-content:center;align-items:flex-start;padding:16vh 16px 16px;background:color-mix(in oklab,var(--color-text) 16%,transparent)}
+.proposal{width:min(600px,100%);padding:20px 22px;border-radius:12px;background:var(--color-surface);box-shadow:var(--lift-3)}
+.proposal-label{margin:0 0 6px;font-size:12px;font-weight:600;color:var(--color-warning)}
+.proposal h2{margin:0 0 8px;font-size:22px}
+.proposal-why{margin:0 0 14px;font-size:13px;line-height:1.5;color:var(--color-muted)}
+.proposal-quote{margin:0 0 16px;padding:10px 12px;border-radius:8px;background:var(--color-canvas);font-size:14px;line-height:1.5;white-space:pre-wrap}
+.proposal-note{margin:0 0 16px}
+.proposal-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.proposal-actions button{padding:8px 14px;font-size:13px}
+.proposal-more{margin:12px 0 0;font-size:12px;color:var(--color-muted)}
+
 /* Scrollbars: thin and tinted from the theme instead of the platform default (polish) */
 ::-webkit-scrollbar{width:10px;height:10px}
 ::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}

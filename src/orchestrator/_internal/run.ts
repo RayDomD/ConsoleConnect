@@ -5,7 +5,10 @@ import type { CommandInput, Member, Snapshot, Task, Tool } from '../../coordinat
 export interface WorkspaceApi {
   snapshot(): Snapshot | null;
   send(taskId: string | null, fields: CommandInput): Promise<void>;
+  /** Queues a review for the person to confirm with a click; it must never send anything itself. */
+  propose(proposal: ReviewProposal): void;
 }
+export interface ReviewProposal { id: string; taskId: string; action: 'accept' | 'changes'; note: string; via?: Tool }
 // `tool` is the AI tool the caller runs in, when known; commands are marked with it ("via Codex").
 export interface CliContext { cwd: string; taskId: string | null; tool?: Tool }
 export interface CliResult { text: string; data: unknown }
@@ -21,7 +24,9 @@ function options(args: string[]) {
     const arg = args[index]!;
     if (!arg.startsWith('--')) { positional.push(arg); continue; }
     const [key, inline] = arg.slice(2).split(/=(.*)/s, 2) as [string, string | undefined];
-    named[key] = inline ?? args[++index] ?? '';
+    // A flag followed by another flag (or nothing) is a switch, like --accept.
+    const next = args[index + 1];
+    named[key] = inline ?? (next !== undefined && !next.startsWith('--') ? args[++index]! : '');
   }
   return { positional, named };
 }
@@ -122,6 +127,26 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
       await send(null, { type: 'post-message', taskId: task.id, body });
       return { text: `Replied on "${task.title}" as ${me.name}.`, data: { taskId: task.id } };
     }
+  }
+  if (group === 'package' && verb === 'show') {
+    const task = findTask(state, positional[0]);
+    const pack = task.package ?? (task.assigneeId === me.id ? task.draftPackage : undefined);
+    if (!pack) throw new CliError(`"${task.title}" has no work package yet.`);
+    const text = [`${task.title} · ${sentenceCase(task.status)}${task.package ? '' : ' (your draft)'}`, `Summary: ${pack.summary}`, `Source: ${pack.sourceRef}`,
+      ...(pack.pullRequestUrl ? [`Pull request: ${pack.pullRequestUrl}`] : []), 'Deliverables:', ...pack.deliverables.map(item => `  ${item}`),
+      `Verification: ${pack.verification || '(none)'}`, `Open questions: ${pack.questions || '(none)'}`].join('\n');
+    return { text, data: { taskId: task.id, status: task.status, package: pack } };
+  }
+  if (group === 'review' && verb === 'propose') {
+    const task = findTask(state, positional[0]);
+    const action = 'accept' in named ? 'accept' : 'changes' in named ? 'changes' : null;
+    if (!action) throw new CliError('Choose --accept or --changes.');
+    if (task.status !== 'submitted' || !task.package) throw new CliError('There is no submitted package to review.');
+    if (task.assigneeId === me.id || me.role === 'contributor') throw new CliError('An independent Owner or Reviewer must review this package.');
+    const note = (named.note ?? '').trim();
+    if (action === 'changes' && !note) throw new CliError('Say what needs to change with --note.');
+    api.propose({ id: crypto.randomUUID(), taskId: task.id, action, note, ...(context.tool ? { via: context.tool } : {}) });
+    return { text: `Proposed ${action === 'accept' ? 'accepting' : 'changes to'} "${task.title}". It waits for ${me.name}'s click in Console Connect.`, data: { taskId: task.id, action } };
   }
   throw new CliError(`Unknown command "${argv.slice(0, 2).join(' ')}". Run console-connect help.`);
 }

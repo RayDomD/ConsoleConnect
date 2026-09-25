@@ -1,6 +1,10 @@
 import { RequestError, type Command, type Member, type WorkspaceState } from './protocol';
 
+// Decisions that stay with people (orchestrator ADR Q4): a tool may propose them, only a click sends them.
+const clickOnly = new Set<Command['type']>(['accept-package', 'request-changes', 'approve-decision', 'approve-task']);
+
 export function applyCommand(state: WorkspaceState, actor: Member, command: Command) {
+  if (command.via && clickOnly.has(command.type)) throw new RequestError(403, 'This needs a click in Console Connect.');
   if (command.type === 'propose-decision') {
     if (state.decisions.some(item => item.id === command.decisionId)) throw new RequestError(409, 'This decision already exists.');
     if (command.supersedesId && !state.decisions.some(item => item.id === command.supersedesId && item.status === 'official')) {

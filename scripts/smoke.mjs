@@ -379,6 +379,37 @@ try {
     await new Promise(resolve => setTimeout(resolve, 200));
   }
   if ((await hostCall('/state')).tasks.find(task => task.id === liveTaskId)?.assigneeId !== hostState.memberId) throw new Error('Assign menu did not assign the task.');
+  // A tool proposes a review through console-connect; only the person's click sends it.
+  const reviewTaskId = crypto.randomUUID();
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId: reviewTaskId, title: 'Expired invite retry', description: '', assigneeId: hostState.memberId });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'approve-task', taskId: reviewTaskId, revision: 1 });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'start-task', taskId: reviewTaskId, revision: 2, tool: 'codex' });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'save-package', taskId: reviewTaskId, revision: 3, summary: 'Retry link for expired invites', sourceRef: `console-connect/${reviewTaskId}`, deliverables: ['src/invitations.ts'], verification: '32 passed', questions: '' });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'submit-package', taskId: reviewTaskId, revision: 4 });
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if ((await cli(['package', 'show', reviewTaskId.slice(0, 8), '--json'])).stdout.includes('Retry link')) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  const proposed = await cli(['review', 'propose', reviewTaskId.slice(0, 8), '--accept', '--note', 'Tests pass and the copy matches.'], cliPipe, 'codex');
+  if (proposed.code !== 0 || !proposed.stdout.includes("waits for Blair's click")) throw new Error(`review propose failed: ${JSON.stringify(proposed)}`);
+  if ((await hostCall('/state')).tasks.find(task => task.id === reviewTaskId).status !== 'submitted') throw new Error('A proposed review was sent without a click.');
+  if (!(await evaluate("document.querySelector('.proposal h2')?.textContent.includes('Expired invite retry') && document.activeElement?.dataset.action === 'proposal-confirm'"))) {
+    throw new Error('The review confirmation card did not appear with the confirm button focused.');
+  }
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/review-proposal.png', Buffer.from(captured.data, 'base64'));
+  }
+  await evaluate("document.querySelector('[data-action=proposal-confirm]').click()");
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const state = await hostCall('/state');
+    if (state.tasks.find(task => task.id === reviewTaskId).status === 'accepted' && state.messages.some(message => message.body === 'Tests pass and the copy matches.')) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  const reviewed = await hostCall('/state');
+  if (reviewed.tasks.find(task => task.id === reviewTaskId).status !== 'accepted') throw new Error('Confirming the proposal did not accept the package.');
+  if (reviewed.messages.find(message => message.body === 'Tests pass and the copy matches.')?.via !== 'codex') throw new Error('The proposal note was not posted via Codex.');
+  if (await evaluate("Boolean(document.querySelector('.proposal'))")) throw new Error('The confirmation card stayed open.');
   const incomingMessageId = crypto.randomUUID();
   await hostCall('/commands', { id: incomingMessageId, type: 'post-message', body: 'Can someone test invitation expiry?' });
   for (let attempt = 0; attempt < 30; attempt++) {
