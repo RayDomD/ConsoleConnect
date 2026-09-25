@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { consoleReadiness, needsInput, readyQuietMs, unknownToolQuietMs } from '../src/console-state';
+import { consoleReadiness, glimpse, needsInput, readyQuietMs, unknownToolQuietMs } from '../src/console-state';
 
 const at = 1_000_000;
 const quiet = at + readyQuietMs;
@@ -35,4 +35,10 @@ test('the needs-input bar shows for a blocking dialog, or when the tool answered
   expect(needsInput({ ...base, lastInputAt: at - 5_000 })).toBe(true);
   expect(needsInput({ ...base, lastInputAt: at - 5_000, terminalFocused: true })).toBe(false);
   expect(needsInput({ ...base, readiness: 'working', lastInputAt: at - 5_000 })).toBe(false);
+});
+
+test('a glimpse is the last three readable lines of a console, without escape codes', () => {
+  const output = '\x1b[2Jstarting\r\n\x1b[32m✓ 32 passed\x1b[0m\r\n\r\n  Editing src/invitations.ts  \r\n' + 'x'.repeat(400) + '\r\n? Allow this command? (y/n) ';
+  expect(glimpse(output)).toEqual(['Editing src/invitations.ts', 'x'.repeat(200), '? Allow this command? (y/n)']);
+  expect(glimpse('')).toEqual([]);
 });

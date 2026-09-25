@@ -1,13 +1,16 @@
 import { expect, test } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { handleHostedRequest, type HostedProviders, type HostedStore } from '../src/hosted-core';
-import type { WorkspaceState } from '../src/coordination/_internal/protocol';
+import type { PresenceRecord, WorkspaceState } from '../src/coordination/_internal/protocol';
 
 function memoryHostedStore(): HostedStore {
   const workspaces = new Map<string, WorkspaceState>();
   const memberships = new Map<string, string>();
   const invites = new Map<string, { workspaceId: string; role: 'reviewer' | 'contributor'; expiresAt: string; githubUserId?: string }>();
+  const presence = new Map<string, PresenceRecord>();
   return {
+    async setPresence(workspaceId, record) { presence.set(`${workspaceId}:${record.memberId}`, record); },
+    async listPresence(workspaceId) { return [...presence.entries()].filter(([key]) => key.startsWith(`${workspaceId}:`)).map(([, record]) => record); },
     async create(input) {
       const state: WorkspaceState = { workspace: { id: input.workspaceId, name: input.name, repository: input.repository },
         revision: 1, members: [{ id: input.memberId, name: input.owner, role: 'owner' }], tasks: [], messages: [], decisions: [],
@@ -169,4 +172,20 @@ test('hosted workspace shares the assignment, approval, retry, and draft privacy
     store, mergedProviders)).status).toBe(200);
   const completed = await handleHostedRequest({ method: 'GET', path: '/state', userId: samUser, workspaceId }, store, providers);
   expect((completed.data as { tasks: Array<{ status: string }> }).tasks[0]?.status).toBe('completed');
+});
+
+test('hosted presence is kept outside the workspace state, and a shared console is listed for watchers', async () => {
+  const store = memoryHostedStore();
+  const owner = 'owner-user';
+  const created = await handleHostedRequest({ method: 'POST', path: '/create', userId: owner, body: { name: 'Team', repository: 'https://github.com/example/project', owner: 'Alex' } }, store, providers);
+  const workspaceId = (created.data as { workspaceId: string }).workspaceId;
+  const call = (method: string, path: string, body?: unknown) => handleHostedRequest({ method, path, userId: owner, workspaceId, body }, store, providers);
+  const before = ((await call('GET', '/state')).data as { revision: number }).revision;
+  const taskId = randomUUID();
+  expect((await call('POST', '/presence', { status: 'here', console: { kind: 'task', taskId, tool: 'codex', needsInput: false, shared: true, glimpse: ['npm test'] } })).status).toBe(200);
+  expect((await call('POST', '/presence', { status: 'gone', console: null })).status).toBe(400);
+  const state = (await call('GET', '/state')).data as { revision: number; presence: Array<{ status: string; console: { glimpse?: string[] } }>; sharedTerminalTaskIds: string[] };
+  expect(state.revision).toBe(before);
+  expect(state.presence[0]).toMatchObject({ status: 'here', console: { glimpse: ['npm test'] } });
+  expect(state.sharedTerminalTaskIds).toEqual([taskId]);
 });

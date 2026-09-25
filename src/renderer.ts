@@ -9,7 +9,7 @@ import { invitationLink, parseInvitationLink } from './invitations';
 import { renderDecisionDocument } from './decision-document';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
-import { consoleReadiness, needsInput } from './console-state';
+import { consoleReadiness, glimpse, needsInput } from './console-state';
 import { defaultAutoSettings, detectEvents, detectWorkerEvents, knowledgeFlags, mapLines, parseProjectMap, protectedChanges, type MapGroup, eventLine, planAutoRun, runCliCommand, taskBrief, workerLine, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkerEvent, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
@@ -180,6 +180,38 @@ function typeWorkerEvents() {
   workerEvents = [];
   workerTypedAt = autoReplies ? 0 : Date.now();
 }
+
+// Presence (roadmap 3.1): a heartbeat every 20 seconds and on changes. Away after five minutes without focus or input.
+const presenceHeartbeatMs = 20_000;
+const awayAfterMs = 5 * 60_000;
+let lastActivityAt = Date.now();
+let lastPresenceSent = '';
+let lastPresenceAt = 0;
+document.addEventListener('pointerdown', () => { lastActivityAt = Date.now(); }, true);
+document.addEventListener('keydown', () => { lastActivityAt = Date.now(); }, true);
+
+function presencePayload() {
+  const here = document.hasFocus() || Date.now() - lastActivityAt < awayAfterMs;
+  const shared = Boolean(terminalTaskId && snapshot?.sharedTerminalTaskIds?.includes(terminalTaskId));
+  const task = terminalTaskId && terminalSessionActive && toolSchema.safeParse(terminalTool).success
+    ? { kind: 'task' as const, taskId: terminalTaskId, tool: terminalTool, needsInput: terminalNeedsInput, shared, ...(shared ? { glimpse: glimpse(terminalOutput) } : {}) }
+    : null;
+  const planning = !task && orchestrator?.active && orchestrator.workspaceId === snapshot?.workspace.id
+    ? { kind: 'orchestrator' as const, tool: orchestrator.tool, needsInput: false, shared: false }
+    : null;
+  return { status: here ? 'here' as const : 'away' as const, console: task ?? planning };
+}
+
+function sendPresence(force = false) {
+  if (view !== 'review' || !snapshot || !connection) return;
+  const payload = presencePayload();
+  const key = JSON.stringify(payload);
+  if (!force && key === lastPresenceSent && Date.now() - lastPresenceAt < presenceHeartbeatMs) return;
+  lastPresenceSent = key; lastPresenceAt = Date.now();
+  void request('/presence', payload).catch(() => {});
+}
+window.addEventListener('focus', () => sendPresence(true));
+window.addEventListener('blur', () => sendPresence(true));
 
 // Worker side of stalls: after this long waiting on its owner, the session is reported so the orchestrator hears.
 const stallAfterMs = 120_000;
@@ -749,6 +781,7 @@ setInterval(() => {
   const elapsed = document.querySelector('.session-elapsed');
   if (elapsed && terminalSessionActive) elapsed.textContent = elapsedLabel();
   typeBriefWhenReady();
+  sendPresence();
   typeOrchestratorOpener();
   typeOrchestratorEvents();
   typeWorkerEvents();

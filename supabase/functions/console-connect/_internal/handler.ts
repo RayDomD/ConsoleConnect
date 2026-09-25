@@ -112,6 +112,17 @@ const store = {
     if (error) throw error;
     return data as boolean;
   },
+  // Presence heartbeats (roadmap 3.1): one row per member, written only by this function.
+  async setPresence(workspaceId: string, record: { memberId: string; at: string }) {
+    const { error } = await admin.from('console_presence').upsert({ workspace_id: workspaceId, member_id: record.memberId,
+      record, updated_at: record.at }, { onConflict: 'workspace_id,member_id' });
+    if (error) throw error;
+  },
+  async listPresence(workspaceId: string) {
+    const { data, error } = await admin.from('console_presence').select('record').eq('workspace_id', workspaceId);
+    if (error) throw error;
+    return (data ?? []).map(row => row.record);
+  },
 };
 
 export async function serve(request: Request) {

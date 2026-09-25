@@ -43,6 +43,8 @@ create publication supabase_realtime;
   if ($LASTEXITCODE -ne 0) { throw 'Supabase migration failed.' }
   & (Join-Path $pgBin 'psql.exe') -v ON_ERROR_STOP=1 -f (Join-Path (Get-Location).Path 'supabase\migrations\20260923130000_github_bound_invites.sql') | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'GitHub invitation migration failed.' }
+  & (Join-Path $pgBin 'psql.exe') -v ON_ERROR_STOP=1 -f (Join-Path (Get-Location).Path 'supabase\migrations\20260925120000_console_presence.sql') | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw 'Presence migration failed.' }
   $test = @'
 select public.console_create_workspace('11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222',
   '33333333-3333-4333-8333-333333333333', 'Team', 'https://github.com/example/repo', 'Alex');
@@ -86,6 +88,13 @@ end $$;
 set request.jwt.claim.sub = '88888888-8888-4888-8888-888888888888';
 do $$ begin
   if (select count(*) from public.console_revisions) <> 0 then raise exception 'Nonmember can read revisions.'; end if;
+end $$;
+do $$ begin
+  begin
+    perform count(*) from public.console_presence;
+    raise exception 'Members can read presence directly.';
+  exception when insufficient_privilege then null;
+  end;
 end $$;
 '@
   $testFile = Join-Path $directory 'test.sql'

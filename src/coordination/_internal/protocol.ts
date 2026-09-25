@@ -38,7 +38,7 @@ export interface Decision {
 export interface Snapshot {
   workspace: { id: string; name: string; repository: string };
   revision: number; members: Member[]; tasks: Task[]; messages: Message[]; decisions: Decision[];
-  sharedTerminalTaskIds?: string[]; memberId: string; settings?: WorkspaceSettings;
+  sharedTerminalTaskIds?: string[]; memberId: string; settings?: WorkspaceSettings; presence?: MemberPresence[];
 }
 const identifier = z.string().uuid();
 const revision = z.number().int().positive();
@@ -83,6 +83,30 @@ export interface WorkspaceState {
   invites: Record<string, { role: Exclude<Role, 'owner'>; expiresAt: number }>;
   appliedCommands: Record<string, { actorId: string; digest: string }>;
 }
+// Presence (Office, roadmap 3.1): heartbeats from each app. Ephemeral, never part of the revisioned state.
+// A glimpse is the last lines of a console, kept only while its owner shares it.
+export const presenceOfflineMs = 60_000;
+export const presenceSchema = z.object({
+  status: z.enum(['here', 'away']),
+  console: z.object({
+    kind: z.enum(['task', 'orchestrator']), taskId: identifier.optional(), tool: toolSchema,
+    needsInput: z.boolean(), shared: z.boolean(), glimpse: z.array(z.string().max(300)).max(3).optional(),
+  }).nullable(),
+});
+export type PresenceInput = z.infer<typeof presenceSchema>;
+export interface PresenceRecord extends PresenceInput { memberId: string; at: string }
+export interface MemberPresence { memberId: string; status: 'here' | 'away' | 'offline'; console: PresenceInput['console']; at: string | null }
+
+export function presenceView(records: PresenceRecord[], memberIds: string[], now: number): MemberPresence[] {
+  return memberIds.map(memberId => {
+    const record = records.find(item => item.memberId === memberId);
+    if (!record) return { memberId, status: 'offline', console: null, at: null };
+    if (now - Date.parse(record.at) > presenceOfflineMs) return { memberId, status: 'offline', console: null, at: record.at };
+    const console = record.console && !record.console.shared ? { ...record.console, glimpse: undefined } : record.console;
+    return { memberId, status: record.status, console, at: record.at };
+  });
+}
+
 export class RequestError extends Error {
   constructor(public status: number, message: string) { super(message); }
 }

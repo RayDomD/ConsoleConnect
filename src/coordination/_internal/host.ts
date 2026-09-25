@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { applyCommand } from './commands';
-import { commandSchema, RequestError, snapshot, type WorkspaceState } from './protocol';
+import { commandSchema, presenceSchema, presenceView, RequestError, snapshot, type PresenceRecord, type WorkspaceState } from './protocol';
 import { openStore } from './store';
 import { getPullRequestStatus, verifyDecisionDocument, type PullRequestStatus } from '../../github';
 import { repositoryIdentity } from '../../repository';
@@ -49,6 +49,7 @@ export async function startHost(options: {
   let tail: Promise<unknown> = Promise.resolve();
   const listeners = new Set<ServerResponse>();
   const sharedTerminals = new Set<string>();
+  const presence = new Map<string, PresenceRecord>();
   const terminalListeners = new Map<string, Set<ServerResponse>>();
   function serialized<T>(action: () => Promise<T>): Promise<T> {
     const next = tail.then(async () => {
@@ -116,7 +117,12 @@ export async function startHost(options: {
       if (!actor) throw new RequestError(401, 'Reconnect with a valid workspace invitation.');
       if (request.method === 'GET' && request.url === '/state') return {
         ...snapshot(state, actor.id), sharedTerminalTaskIds: [...sharedTerminals],
+        presence: presenceView([...presence.values()], state.members.map(member => member.id), Date.now()),
       };
+      if (request.method === 'POST' && request.url === '/presence') {
+        presence.set(actor.id, { ...presenceSchema.parse(await body(request)), memberId: actor.id, at: new Date().toISOString() });
+        return { ok: true };
+      }
       const terminalOperation = /^\/terminal\/([0-9a-f-]{36})\/(share|output)$/i.exec(request.url ?? '');
       if (request.method === 'POST' && terminalOperation) {
         const taskId = terminalOperation[1]!;

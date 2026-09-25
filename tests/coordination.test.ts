@@ -419,3 +419,22 @@ test('the worker app reports a stalled session without disturbing the task revis
   await send(sam.token, { type: 'report-session', taskId, state: 'working' });
   expect((await api(host.url, host.token, '/state')).data.tasks[0].stall).toBeUndefined();
 });
+
+test('presence is ephemeral: heartbeats show who is here and what runs, never bump the revision, and hide private glimpses', async () => {
+  const host = await workspace();
+  const sam = await teammate(host.url, host.token, 'contributor');
+  const before = (await api(host.url, host.token, '/state')).data.revision;
+  const taskId = randomUUID();
+  expect((await api(host.url, sam.token, '/presence', { status: 'here', console: { kind: 'task', taskId, tool: 'claude', needsInput: false, shared: false, glimpse: ['secret line'] } })).status).toBe(200);
+  expect((await api(host.url, host.token, '/presence', { status: 'away', console: null })).status).toBe(200);
+  expect((await api(host.url, host.token, '/presence', { status: 'asleep', console: null })).status).toBe(400);
+  const state = (await api(host.url, host.token, '/state')).data;
+  expect(state.revision).toBe(before);
+  const samPresence = state.presence.find((item: { memberId: string }) => item.memberId === sam.memberId);
+  expect(samPresence).toMatchObject({ status: 'here', console: { kind: 'task', taskId, tool: 'claude', shared: false } });
+  expect(samPresence.console.glimpse).toBeUndefined();
+  await api(host.url, sam.token, '/presence', { status: 'here', console: { kind: 'task', taskId, tool: 'claude', needsInput: true, shared: true, glimpse: ['✓ 34 passed', 'Allow this command? (y/n)'] } });
+  const shared = (await api(host.url, host.token, '/state')).data.presence.find((item: { memberId: string }) => item.memberId === sam.memberId);
+  expect(shared.console).toMatchObject({ needsInput: true, glimpse: ['✓ 34 passed', 'Allow this command? (y/n)'] });
+  expect(state.presence.find((item: { memberId: string }) => item.memberId === state.memberId).status).toBe('away');
+});

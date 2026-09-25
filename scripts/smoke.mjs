@@ -331,6 +331,14 @@ try {
     { shell: process.platform === 'win32', env: { ...process.env, CONSOLE_CONNECT_PIPE: pipe, ...(tool ? { CONSOLE_CONNECT_TOOL: tool } : {}) } }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr })));
   const listed = await cli(['task', 'list', '--json']);
   if (listed.code !== 0 || !JSON.parse(listed.stdout).tasks.some(task => task.title === 'Review login')) throw new Error(`console-connect task list failed: ${JSON.stringify(listed)}`);
+  // Presence heartbeats reach the host without changing the workspace revision.
+  for (let attempt = 0; attempt < 30; attempt++) {
+    const state = await hostCall('/state');
+    if (state.presence?.find(item => item.memberId === state.memberId)?.at) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  const seen = await hostCall('/state');
+  if (!['here', 'away'].includes(seen.presence?.find(item => item.memberId === seen.memberId)?.status)) throw new Error(`Presence did not reach the host: ${JSON.stringify(seen.presence)}`);
   const briefed = await cli(['brief']);
   if (briefed.code !== 0 || !briefed.stdout.includes('You are Alex, Owner.') || !briefed.stdout.includes('Assigning: Anyone assigns to anyone. You can assign.')) {
     throw new Error(`console-connect brief failed: ${JSON.stringify(briefed)}`);

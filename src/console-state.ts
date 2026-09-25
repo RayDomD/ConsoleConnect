@@ -16,13 +16,16 @@ const readyMarkers: Record<string, string[]> = {
 };
 const blockingMarkers = ['entertoconfirm', 'pressentertocontinue', 'doyoutrust', '(y/n)'];
 
-function normalize(output: string) {
+// Terminal title, cursor, color, and charset sequences, so only printed text remains.
+function stripEscapes(output: string) {
   return output.slice(-screenTailChars)
     .replace(/\x1b\][^\x07]*(?:\x07|\x1b\\)/g, '')
     .replace(/\x1b\[[0-9;?>]*[ -/]*[@-~]/g, '')
-    .replace(/\x1b[()][0-9A-Za-z]/g, '')
-    .replace(/\s+/g, '')
-    .toLowerCase();
+    .replace(/\x1b[()][0-9A-Za-z]/g, '');
+}
+
+function normalize(output: string) {
+  return stripEscapes(output).replace(/\s+/g, '').toLowerCase();
 }
 
 const lastIndex = (text: string, markers: string[]) => Math.max(-1, ...markers.map(marker => text.lastIndexOf(marker)));
@@ -44,4 +47,17 @@ export function needsInput(input: { readiness: ConsoleReadiness; terminalFocused
   if (input.terminalFocused) return false;
   if (input.readiness === 'blocked') return true;
   return input.readiness === 'ready' && input.lastInputAt > 0 && input.lastOutputAt > input.lastInputAt;
+}
+
+// The Office shows a few readable lines of a shared console (roadmap 3.3), refreshed with presence.
+const glimpseLines = 3;
+const glimpseWidth = 200;
+
+export function glimpse(output: string) {
+  return stripEscapes(output)
+    .split(/\r?\n|\r/)
+    .map(line => line.trim())
+    .filter(Boolean)
+    .slice(-glimpseLines)
+    .map(line => line.slice(0, glimpseWidth));
 }

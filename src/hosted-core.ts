@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { applyCommand } from './coordination/_internal/commands';
-import { commandSchema, RequestError, snapshot, type Decision, type WorkspaceState } from './coordination/_internal/protocol';
+import { commandSchema, presenceSchema, presenceView, RequestError, snapshot, type Decision, type PresenceRecord, type WorkspaceState } from './coordination/_internal/protocol';
 import { repositoryIdentity } from './repository';
 import type { PullRequestStatus } from './github';
 export { renderDecisionDocument } from './decision-document';
@@ -12,6 +12,9 @@ export interface HostedStore {
   read(workspaceId: string, userId: string): Promise<{ state: WorkspaceState; memberId: string } | null>;
   invite(input: { workspaceId: string; codeHash: string; role: 'reviewer' | 'contributor'; expiresAt: string; githubUserId?: string }): Promise<void>;
   compareAndSwap(workspaceId: string, revision: number, next: WorkspaceState): Promise<boolean>;
+  /** Presence heartbeats live outside the revisioned state (roadmap 3.1). */
+  setPresence(workspaceId: string, record: PresenceRecord): Promise<void>;
+  listPresence(workspaceId: string): Promise<PresenceRecord[]>;
 }
 
 export interface HostedProviders {
@@ -75,7 +78,12 @@ export async function handleHostedRequest(request: HostedRequest, store: HostedS
     const actor = current.state.members.find(member => member.id === current.memberId);
     if (!actor) throw new RequestError(403, 'Workspace membership is invalid.');
     if (request.method === 'GET' && request.path === '/state') {
-      return { status: 200, data: { ...snapshot(current.state, actor.id), sharedTerminalTaskIds: [] } };
+      const presence = presenceView(await store.listPresence(workspaceId), current.state.members.map(member => member.id), Date.now());
+      return { status: 200, data: { ...snapshot(current.state, actor.id), sharedTerminalTaskIds: presence.flatMap(item => item.console?.shared && item.console.taskId ? [item.console.taskId] : []), presence } };
+    }
+    if (request.method === 'POST' && request.path === '/presence') {
+      await store.setPresence(workspaceId, { ...presenceSchema.parse(request.body), memberId: actor.id, at: new Date().toISOString() });
+      return { status: 200, data: { ok: true } };
     }
     if (request.method === 'POST' && request.path === '/invites') {
       if (actor.role !== 'owner') throw new RequestError(403, 'Only the host can invite members.');

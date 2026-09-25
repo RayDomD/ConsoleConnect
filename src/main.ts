@@ -89,7 +89,7 @@ function hostConnection(host: Awaited<ReturnType<typeof startHost>>) {
 ipcMain.handle('request', async (_event, input: { url: string; token: string; path: string; body?: unknown }) => {
   const base = new URL(input.url);
   if (base.protocol !== 'http:' && base.protocol !== 'https:') throw new Error('Use an HTTP workspace address.');
-  if (!['/join', '/state', '/invites', '/commands'].includes(input.path) && !/^\/pull-request\/[0-9a-f-]{36}$/i.test(input.path)) throw new Error('Unknown workspace operation.');
+  if (!['/join', '/state', '/invites', '/commands', '/presence'].includes(input.path) && !/^\/pull-request\/[0-9a-f-]{36}$/i.test(input.path)) throw new Error('Unknown workspace operation.');
   const response = await fetch(new URL(input.path, base), {
     method: input.body === undefined ? 'GET' : 'POST',
     headers: { authorization: `Bearer ${input.token}`, 'content-type': 'application/json' },
