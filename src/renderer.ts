@@ -8,8 +8,8 @@ import { hostedAccessToken, hostedProjects, hostedRequest, hostedSignIn, watchHo
 import { invitationLink, parseInvitationLink } from './invitations';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
-import { needsInput } from './console-state';
-import { runCliCommand, type ReviewProposal, type WorkspaceApi } from './orchestrator';
+import { consoleReadiness, needsInput } from './console-state';
+import { runCliCommand, taskBrief, type ReviewProposal, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -112,6 +112,9 @@ let terminalEndedAt = 0;
 let terminalDirectory = '';
 let terminalLastOutputAt = 0;
 let terminalNeedsInput = false;
+let terminalLastInputAt = 0;
+// The task brief waits here until the tool is first ready, then is typed in without Enter (orchestrator ADR Q6).
+let briefPendingTaskId: string | null = null;
 let watchedTaskId: string | null = null;
 let watchedOutput = '';
 let terminal: Terminal | null = null;
@@ -555,11 +558,21 @@ const terminalResizeObserver = new ResizeObserver(() => {
     window.consoleConnect.terminalResize({ taskId: terminalTaskId, cols: terminal.cols, rows: terminal.rows });
   }
 });
-const localSessionNeedsInput = () => needsInput({ active: terminalSessionActive, lastOutputAt: terminalLastOutputAt, now: Date.now(),
+const localReadiness = () => consoleReadiness({ tool: terminalTool, output: terminalOutput, lastOutputAt: terminalLastOutputAt, now: Date.now() });
+const localSessionNeedsInput = () => terminalSessionActive && needsInput({ readiness: localReadiness(), lastInputAt: terminalLastInputAt, lastOutputAt: terminalLastOutputAt,
   terminalFocused: terminalRenderSource === 'local' && Boolean(terminal?.element?.contains(document.activeElement)) && document.hasFocus() });
+
+function typeBriefWhenReady() {
+  if (!briefPendingTaskId || briefPendingTaskId !== terminalTaskId || !terminalSessionActive) return;
+  if (localReadiness() !== 'ready') return;
+  const task = snapshot?.tasks.find(item => item.id === briefPendingTaskId);
+  briefPendingTaskId = null;
+  if (task && snapshot) window.consoleConnect.terminalWrite({ taskId: task.id, data: taskBrief(snapshot, task) });
+}
 setInterval(() => {
   const elapsed = document.querySelector('.session-elapsed');
   if (elapsed && terminalSessionActive) elapsed.textContent = elapsedLabel();
+  typeBriefWhenReady();
   // Re-render only when the inferred state flips, so the terminal and any focus stay put.
   if (localSessionNeedsInput() !== terminalNeedsInput) { terminalNeedsInput = !terminalNeedsInput; render(); }
 }, 1000);
@@ -801,7 +814,11 @@ function render() {
           terminalFit.fit();
           terminal.write(localTerminal ? terminalOutput : watchedOutput);
           if (localTerminal && terminalSessionActive) {
-            terminal.onData(data => window.consoleConnect.terminalWrite({ taskId: selected.id, data }));
+            terminal.onData(data => {
+              // Focus reports (ESC [ I / ESC [ O) are the terminal talking, not the person answering.
+              if (!/^\x1b\[[IO]$/.test(data)) terminalLastInputAt = Date.now();
+              window.consoleConnect.terminalWrite({ taskId: selected.id, data });
+            });
           }
         }
         if (localTerminal && terminalSessionActive) window.consoleConnect.terminalResize({ taskId: selected.id, cols: terminal.cols, rows: terminal.rows });
@@ -1275,6 +1292,7 @@ app.addEventListener('click', async event => {
       terminalOutput = '';
       terminalSessionActive = true;
       terminalTool = tool; terminalStartedAt = Date.now(); terminalDirectory = ''; terminalLastOutputAt = Date.now(); terminalNeedsInput = false;
+      terminalLastInputAt = 0; briefPendingTaskId = task.id;
       const active = connection!;
       const access = active.mode === 'supabase' ? { ...active, token: await hostedAccessToken(active) } : active;
       try { terminalDirectory = (await window.consoleConnect.runTask({ ...access, taskId: task.id, tool, repositoryPath })).directory; }

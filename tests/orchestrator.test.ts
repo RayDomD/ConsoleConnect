@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { CommandInput, Snapshot } from '../src/coordination';
-import { runCliCommand, type ReviewProposal, type WorkspaceApi } from '../src/orchestrator';
+import { runCliCommand, taskBrief, type ReviewProposal, type WorkspaceApi } from '../src/orchestrator';
 
 const blair = '11111111-1111-4111-8111-111111111111';
 const sam = '22222222-2222-4222-8222-222222222222';
@@ -92,6 +92,18 @@ describe('console-connect commands in the app', () => {
     await runCliCommand(['task', 'decline', 'abbb', '--note', 'Out this week.'], context, api);
     expect(sent[0]).toEqual({ taskId: invite, fields: { type: 'decline-task', note: 'Out this week.' } });
     await expect(runCliCommand(['task', 'decline', 'aaaa'], context, api)).rejects.toThrow('Only the person it was assigned to can decline it.');
+  });
+
+  test('the typed-in task brief is one line: the task, its decisions, and how to hand work back', () => {
+    const { state } = workspace();
+    state.tasks[1] = { ...state.tasks[1]!, description: 'Show a retry link.\n\nKeep the copy short.' };
+    state.decisions.push({ id: 'd1', title: 'Links last 24 hours', body: '', proposedBy: blair, createdAt: '', status: 'official', affectedTaskIds: [invite] });
+    const brief = taskBrief(state, state.tasks[1]!);
+    expect(brief).not.toMatch(/[\r\n]/);
+    expect(brief).toContain('Task "Expired invite retry" (abbbbbbb) for Sam: Show a retry link. Keep the copy short.');
+    expect(brief).toContain('Follow the decision "Links last 24 hours".');
+    expect(brief).toContain('console-connect package draft --summary');
+    expect(brief).toContain('console-connect ask');
   });
 });
 
