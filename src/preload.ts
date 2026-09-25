@@ -29,6 +29,10 @@ contextBridge.exposeInMainWorld('consoleConnect', {
   terminalResize: (input: { taskId: string; cols: number; rows: number }) => ipcRenderer.send('terminal-resize', input),
   terminalKill: (input: { taskId: string }) => ipcRenderer.send('terminal-kill', input),
   worktreeChanges: (input: { taskId: string }) => ipcRenderer.invoke('worktree-changes', input),
+  cliFolder: () => ipcRenderer.invoke('cli-folder'),
+  onCliRequest: (callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; taskId: string | null }) => void) =>
+    ipcRenderer.on('cli-request', (_event, value) => callback(value)),
+  replyToCli: (value: { id: string; reply: { ok: true; text: string; data: unknown } | { ok: false; error: string } }) => ipcRenderer.send('cli-reply', value),
   onTerminalData: (callback: (event: { taskId: string; data: string }) => void) => ipcRenderer.on('terminal-data', (_event, value) => callback(value)),
   onTerminalExit: (callback: (event: { taskId: string; exitCode: number }) => void) => ipcRenderer.on('terminal-exit', (_event, value) => callback(value)),
 });

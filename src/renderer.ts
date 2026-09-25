@@ -9,6 +9,7 @@ import { invitationLink, parseInvitationLink } from './invitations';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { needsInput } from './console-state';
+import { runCliCommand, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -41,6 +42,9 @@ declare global {
       terminalResize(input: { taskId: string; cols: number; rows: number }): void;
       terminalKill(input: { taskId: string }): void;
       worktreeChanges(input: { taskId: string }): Promise<Array<{ path: string; added: number | null; removed: number | null }>>;
+      cliFolder(): Promise<string>;
+      onCliRequest(callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; taskId: string | null }) => void): void;
+      replyToCli(value: { id: string; reply: { ok: true; text: string; data: unknown } | { ok: false; error: string } }): void;
       onTerminalData(callback: (event: { taskId: string; data: string }) => void): void;
       onTerminalExit(callback: (event: { taskId: string; exitCode: number }) => void): void;
     };
@@ -1156,6 +1160,23 @@ try {
   }
 } catch { /* Ignore damaged previous connection. */ }
 showSetup = projects.length === 0;
+// console-connect requests arrive from the pipe in main and run here, as this person, with this session.
+const cliWorkspace: WorkspaceApi = {
+  snapshot: () => view === 'review' ? snapshot : null,
+  send: async (taskId, fields) => {
+    const task = taskId ? snapshot?.tasks.find(item => item.id === taskId) ?? null : null;
+    if (taskId && !task) throw new Error('Task not found.');
+    await command(task, fields);
+  },
+};
+window.consoleConnect.onCliRequest(async request => {
+  try {
+    const result = await runCliCommand(request.argv, { cwd: request.cwd, taskId: request.taskId }, cliWorkspace);
+    window.consoleConnect.replyToCli({ id: request.id, reply: { ok: true, ...result } });
+  } catch (error) {
+    window.consoleConnect.replyToCli({ id: request.id, reply: { ok: false, error: (error as Error).message } });
+  }
+});
 window.consoleConnect.onWorkspaceConnected(() => { void refresh(); });
 window.consoleConnect.onWorkspaceRevision(revision => { if (!snapshot || revision > snapshot.revision) void refresh(); });
 window.consoleConnect.onWorkspaceConnectionError(message => { notice = message; render(); });

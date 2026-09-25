@@ -1,5 +1,5 @@
 import { app, BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import type { IPty } from 'node-pty';
 import { startHost } from './coordination';
@@ -11,6 +11,7 @@ import { providerLaunch } from './providers';
 import { resolveLinkedRepository } from './local-repository';
 import { oauthCallbackUrl } from './oauth';
 import { receiveOAuthCallback } from './oauth-callback';
+import { consoleEnvironment, startCliServer, writeCliShims } from './cli-server';
 
 let hosted: Awaited<ReturnType<typeof startHost>> | null = null;
 type WorkspaceConnection = { url: string; token: string; mode?: 'local' } | {
@@ -21,6 +22,8 @@ const sessions = new Map<string, LocalSession>();
 const terminalWatches = new Map<string, AbortController>();
 let workspaceWatch: AbortController | null = null;
 let oauthInProgress = false;
+// Folder holding the console-connect shims; consoles get it first on PATH.
+let cliBin = '';
 async function terminalRequest(session: LocalSession, taskId: string, operation: 'share' | 'output', body: object) {
   if (session.hosted) throw new Error('Terminal sharing is not available for hosted workspaces yet.');
   const response = await fetch(new URL(`/terminal/${taskId}/${operation}`, session.url), {
@@ -60,7 +63,15 @@ app.whenReady().then(() => {
     webPreferences: { preload: join(__dirname, 'preload.cjs'), contextIsolation: true, nodeIntegration: false },
   });
   void window.loadFile(join(__dirname, 'index.html')).catch(error => { console.error('Desktop launch failed:', error); app.exit(1); });
+  // Packaged builds unpack cli.cjs so the shims can run it outside the archive.
+  cliBin = writeCliShims(join(app.getPath('userData'), 'bin'), process.execPath,
+    join(__dirname, 'cli.cjs').replace(`app.asar${sep}`, `app.asar.unpacked${sep}`));
+  startCliServer({ worktrees: join(app.getPath('userData'), 'worktrees'),
+    target: () => window.isDestroyed() ? null : window.webContents,
+    onReply: listener => ipcMain.on('cli-reply', (_event, value) => listener(value)) });
 });
+
+ipcMain.handle('cli-folder', () => cliBin);
 
 ipcMain.handle('host', async (_event, input: { name: string; repository: string; owner: string }) => {
   if (hosted) return hostConnection(hosted);
@@ -199,7 +210,7 @@ ipcMain.handle('run-task', async (event, input: WorkspaceConnection & { taskId: 
   const directory = await prepareWorktree(input.repositoryPath, state.workspace.repository, task.id, join(app.getPath('userData'), 'worktrees'));
   const launch = providerLaunch(input.tool, process.env.CONSOLE_CONNECT_TEST_PROVIDER_VERSION === '1');
   const terminal = (require('node-pty') as typeof import('node-pty')).spawn(launch.file, launch.args, { cwd: directory, cols: 100, rows: 30,
-    name: 'xterm-256color', env: process.env as Record<string, string> });
+    name: 'xterm-256color', env: consoleEnvironment(process.env, cliBin, { CONSOLE_CONNECT_TOOL: input.tool }) });
   const session: LocalSession = { terminal, url: input.mode === 'supabase' ? input.projectUrl : input.url,
     token: input.token, hosted: input.mode === 'supabase', shared: false, pending: '', sending: false,
     onShareError: () => { if (!event.sender.isDestroyed()) event.sender.send('terminal-sharing-error', { taskId: task.id }); },

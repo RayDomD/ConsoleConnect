@@ -20,9 +20,11 @@ await new Promise(resolve => probe.listen(0, '127.0.0.1', resolve));
 const port = probe.address().port;
 await new Promise(resolve => probe.close(resolve));
 const packaged = process.argv.includes('--packaged');
+// Its own pipe, so the CLI check never reaches a real Console Connect the person has open.
+const cliPipe = process.platform === 'win32' ? `\\\\.\\pipe\\cc-smoke-${port}` : join(directory, 'cli.sock');
 const executable = packaged ? join(process.cwd(), 'release', 'win-unpacked', 'Console Connect.exe') : electron;
 const child = spawn(executable, [...(packaged ? [] : ['.']), `--remote-debugging-port=${port}`], {
-  env: { ...process.env, CONSOLE_CONNECT_TEST_DATA: directory, CONSOLE_CONNECT_TEST_PROVIDER_VERSION: '1' }, stdio: 'ignore',
+  env: { ...process.env, CONSOLE_CONNECT_TEST_DATA: directory, CONSOLE_CONNECT_TEST_PROVIDER_VERSION: '1', CONSOLE_CONNECT_PIPE: cliPipe }, stdio: 'ignore',
 });
 
 try {
@@ -306,6 +308,22 @@ try {
   if (!(await evaluate("document.activeElement === document.querySelector('.palette-input')"))) throw new Error('The Jump button did not open the palette.');
   await press('Escape');
   if (await evaluate("Boolean(document.querySelector('.palette'))")) throw new Error('Escape did not close the palette.');
+  // console-connect through the generated shim, the way a terminal or AI tool runs it.
+  const cli = (args, pipe = cliPipe) => new Promise(resolve => execFile(join(directory, 'bin', process.platform === 'win32' ? 'console-connect.cmd' : 'console-connect'),
+    // cmd joins arguments as typed, so quote the ones with spaces the way a person would.
+    process.platform === 'win32' ? args.map(arg => /\s/.test(arg) ? `"${arg}"` : arg) : args,
+    { shell: process.platform === 'win32', env: { ...process.env, CONSOLE_CONNECT_PIPE: pipe } }, (error, stdout, stderr) => resolve({ code: error?.code ?? 0, stdout, stderr })));
+  const listed = await cli(['task', 'list', '--json']);
+  if (listed.code !== 0 || !JSON.parse(listed.stdout).tasks.some(task => task.title === 'Review login')) throw new Error(`console-connect task list failed: ${JSON.stringify(listed)}`);
+  const created = await cli(['task', 'create', '--title', 'From the CLI', '--description', 'Made by console-connect']);
+  if (created.code !== 0 || !created.stdout.includes('as Alex')) throw new Error(`console-connect task create failed: ${JSON.stringify(created)}`);
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("document.querySelector('.task-list')?.innerText.includes('From the CLI')")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  if (!(await evaluate("document.querySelector('.task-list')?.innerText.includes('From the CLI')"))) throw new Error(`A task created through console-connect did not appear in the app: ${JSON.stringify({ created, onHost: (await hostCall('/state')).tasks.map(task => task.title), notice: await evaluate("document.querySelector('.notice')?.innerText ?? null"), view: await evaluate("document.querySelector('.task-list')?.innerText.slice(0, 300) ?? 'no list'") })}`);
+  const closed = await cli(['brief'], process.platform === 'win32' ? '\\\\.\\pipe\\cc-smoke-closed' : join(directory, 'closed.sock'));
+  if (closed.code !== 2 || !closed.stderr.includes('Open Console Connect')) throw new Error(`console-connect without the app should exit 2: ${JSON.stringify(closed)}`);
   const taskId = crypto.randomUUID();
   const hostState = await hostCall('/state');
   await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId,

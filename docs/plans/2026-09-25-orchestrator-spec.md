@@ -30,7 +30,8 @@ Any member can orchestrate, by hand or with their own AI tool. The tool acts as 
 
 ### Local pipe (2.1)
 
-- The app listens on a per-user endpoint: `\\.\pipe\console-connect-<username>` on Windows, `<userData>/console-connect.sock` elsewhere. Windows' default pipe ACL gives write access only to the creating user, SYSTEM, and administrators.
+- The app listens on a per-user endpoint: `\\.\pipe\console-connect-<username>` on Windows, `console-connect-<username>.sock` in `XDG_RUNTIME_DIR` or the temp folder elsewhere (the CLI cannot know the app's data folder). `CONSOLE_CONNECT_PIPE` overrides it for tests.
+- Main only relays: it forwards each request to the renderer, which holds the session and snapshot, runs it through `src/orchestrator`, and answers. Windows' default pipe ACL gives write access only to the creating user, SYSTEM, and administrators.
 - Protocol: one JSON request per connection, `{ version: 1, command: string[], cwd: string, tool?: Tool }`, and one JSON reply `{ ok: true, data } | { ok: false, error }`.
 - The app runs the request with its current workspace connection (local host or Supabase) and its existing session. No credential is stored for the CLI. With no open workspace, the reply says so. With the app closed, the CLI prints "Open Console Connect to use console-connect." and exits 2.
 - The task context comes from `cwd`: inside a task worktree (`<userData>/worktrees/<taskId>`), commands default to that task.
