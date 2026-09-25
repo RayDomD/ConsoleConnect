@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { prepareWorktree, worktreeChanges } from '../src/execution';
+import { prepareWorktree, worktreeChanges, worktreeFacts } from '../src/execution';
 
 const git = promisify(execFile);
 const cleanup: string[] = [];
@@ -78,4 +78,23 @@ test('a task worktree lists committed, edited, and new files since the task bran
     { path: 'kept.txt', added: 1, removed: 1 },
     { path: 'new.txt', added: null, removed: null },
   ]);
+});
+
+test('a task worktree reports its branch, commit, and changes for the work package', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'console-connect-facts-'));
+  cleanup.push(root);
+  const repo = join(root, 'repo');
+  const identity = ['-c', 'user.name=Test', '-c', 'user.email=test@example.com'];
+  await git('git', ['init', repo]);
+  await git('git', ['-C', repo, 'remote', 'add', 'origin', 'https://github.com/example/project.git']);
+  await git('git', ['-C', repo, ...identity, 'commit', '--allow-empty', '-m', 'Initial']);
+  const taskId = randomUUID();
+  const path = await prepareWorktree(repo, 'https://github.com/example/project', taskId, join(root, 'worktrees'));
+  await writeFile(join(path, 'retry.ts'), 'export const retry = true;\n');
+  await git('git', ['-C', path, 'add', '.']);
+  await git('git', ['-C', path, ...identity, 'commit', '-m', 'Retry']);
+  const head = (await git('git', ['-C', path, 'rev-parse', 'HEAD'])).stdout.trim();
+  const facts = await worktreeFacts(path);
+  expect(facts).toMatchObject({ branch: `console-connect/${taskId}`, commit: head, files: [{ path: 'retry.ts', added: 1, removed: 0 }] });
+  expect(facts.pullRequestUrl).toBeUndefined();
 });

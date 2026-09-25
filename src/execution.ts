@@ -45,3 +45,18 @@ export async function worktreeChanges(directory: string): Promise<ChangedFile[]>
   for (const path of untracked.split('\n').filter(Boolean)) files.push({ path, added: null, removed: null });
   return files;
 }
+
+const pullRequestLookupMs = 5_000;
+
+// Git facts for a work package: the app fills these in so they match what the reviewer sees.
+// The pull request comes from the GitHub CLI when it is installed and signed in; otherwise it is left out.
+export async function worktreeFacts(directory: string) {
+  const [{ stdout: branch }, { stdout: commit }, files] = await Promise.all([
+    run('git', ['-C', directory, 'branch', '--show-current']),
+    run('git', ['-C', directory, 'rev-parse', 'HEAD']),
+    worktreeChanges(directory),
+  ]);
+  const pullRequestUrl = await run('gh', ['pr', 'view', '--json', 'url', '--jq', '.url'], { cwd: directory, timeout: pullRequestLookupMs })
+    .then(result => /^https:\/\/\S+\/pull\/\d+$/.test(result.stdout.trim()) ? result.stdout.trim() : undefined, () => undefined);
+  return { branch: branch.trim(), commit: commit.trim(), files, pullRequestUrl };
+}

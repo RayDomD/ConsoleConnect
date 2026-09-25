@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('consoleConnect', {
   terminalResize: (input: { taskId: string; cols: number; rows: number }) => ipcRenderer.send('terminal-resize', input),
   terminalKill: (input: { taskId: string }) => ipcRenderer.send('terminal-kill', input),
   worktreeChanges: (input: { taskId: string }) => ipcRenderer.invoke('worktree-changes', input),
+  worktreeFacts: (input: { taskId: string }) => ipcRenderer.invoke('worktree-facts', input),
   cliFolder: () => ipcRenderer.invoke('cli-folder'),
   onCliRequest: (callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; taskId: string | null }) => void) =>
     ipcRenderer.on('cli-request', (_event, value) => callback(value)),

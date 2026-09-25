@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import type { CommandInput, Snapshot } from '../src/coordination';
-import { runCliCommand, taskBrief, type ReviewProposal, type WorkspaceApi } from '../src/orchestrator';
+import { runCliCommand, taskBrief, type PackageDraft, type ReviewProposal, type WorkspaceApi } from '../src/orchestrator';
 
 const blair = '11111111-1111-4111-8111-111111111111';
 const sam = '22222222-2222-4222-8222-222222222222';
@@ -20,9 +20,10 @@ function workspace() {
   };
   const sent: Array<{ taskId: string | null; fields: CommandInput }> = [];
   const proposals: ReviewProposal[] = [];
+  const drafts: PackageDraft[] = [];
   const api: WorkspaceApi = { snapshot: () => state, send: async (taskId, fields) => { sent.push({ taskId, fields }); },
-    propose: proposal => { proposals.push(proposal); } };
-  return { api, sent, proposals, state };
+    propose: proposal => { proposals.push(proposal); }, draftPackage: async draft => { drafts.push(draft); } };
+  return { api, sent, proposals, drafts, state };
 }
 
 const context = { cwd: 'C:/work/demo', taskId: null };
@@ -104,6 +105,19 @@ describe('console-connect commands in the app', () => {
     expect(brief).toContain('Follow the decision "Links last 24 hours".');
     expect(brief).toContain('console-connect package draft --summary');
     expect(brief).toContain('console-connect ask');
+  });
+
+  test('package draft saves the words for the task console it runs in; the app adds the Git facts', async () => {
+    const { api, drafts, state } = workspace();
+    state.memberId = sam;
+    const inTask = { ...context, taskId: invite, tool: 'claude' as const };
+    const result = await runCliCommand(['package', 'draft', '--summary', 'Retry banner added.', '--checks', 'npm test: 34 passed', '--questions', 'Email the owner?'], inTask, api);
+    expect(drafts).toEqual([{ taskId: invite, summary: 'Retry banner added.', checks: 'npm test: 34 passed', questions: 'Email the owner?', via: 'claude' }]);
+    expect(result.text).toBe('Drafted the work package for "Expired invite retry". Only you can see it until you submit it in Console Connect.');
+    await expect(runCliCommand(['package', 'draft', '--checks', 'x'], inTask, api)).rejects.toThrow('Give the package a --summary.');
+    await expect(runCliCommand(['package', 'draft', '--summary', 'x'], context, api)).rejects.toThrow('Run package draft in the task console, or add --task <id>.');
+    state.memberId = blair;
+    await expect(runCliCommand(['package', 'draft', '--summary', 'x'], inTask, api)).rejects.toThrow('Only the person working on this task can draft its package.');
   });
 });
 

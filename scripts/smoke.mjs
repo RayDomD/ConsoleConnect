@@ -329,6 +329,22 @@ try {
   }
   const closed = await cli(['brief'], process.platform === 'win32' ? '\\\\.\\pipe\\cc-smoke-closed' : join(directory, 'closed.sock'));
   if (closed.code !== 2 || !closed.stderr.includes('Open Console Connect')) throw new Error(`console-connect without the app should exit 2: ${JSON.stringify(closed)}`);
+  // A tool drafts the package; the app adds the Git facts from the task worktree.
+  const claudeTask = (await hostCall('/state')).tasks.find(task => task.title === 'Check claude launch');
+  const drafted = await cli(['package', 'draft', '--task', claudeTask.id.slice(0, 8), '--summary', 'Launch checked from the console.', '--checks', 'claude --version printed', '--questions', 'None'], cliPipe, 'claude');
+  if (drafted.code !== 0) throw new Error(`package draft failed: ${JSON.stringify(drafted)}`);
+  const draft = (await hostCall('/state')).tasks.find(task => task.id === claudeTask.id).draftPackage;
+  if (draft?.summary !== 'Launch checked from the console.' || !draft.sourceRef.startsWith(`console-connect/${claudeTask.id} · `) || draft.verification !== 'claude --version printed') {
+    throw new Error(`The drafted package lacks the Git facts: ${JSON.stringify(draft)}`);
+  }
+  await evaluate(`document.querySelector('[data-task="${claudeTask.id}"]').click(); document.querySelector('[data-tab=package]').click()`);
+  if (!(await evaluate("document.querySelector('.package-card-summary')?.textContent === 'Launch checked from the console.' && Boolean(document.querySelector('.package-card [data-action=submit]'))"))) {
+    throw new Error('The package tab did not show the drafted card.');
+  }
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/package-card.png', Buffer.from(captured.data, 'base64'));
+  }
   // The orchestrator console runs a tool in the main project folder and lists CLI activity.
   await evaluate("document.querySelector('[data-action=open-orchestrator]').click()");
   if (!(await evaluate("document.querySelector('.breadcrumb-current')?.textContent === 'Orchestrator' && document.querySelector('.cli-activity')?.innerText.includes('Created')"))) {

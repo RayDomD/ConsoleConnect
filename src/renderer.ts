@@ -1,5 +1,5 @@
 import { loadTheme, selectTheme, themes, type ThemeId } from './themes';
-import type { Message, Snapshot, Task } from './coordination';
+import type { Message, Snapshot, Task, WorkPackage } from './coordination';
 import { commandSchema, toolSchema, type AssigningRule } from './coordination/_internal/protocol';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -9,7 +9,7 @@ import { invitationLink, parseInvitationLink } from './invitations';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { consoleReadiness, needsInput } from './console-state';
-import { runCliCommand, taskBrief, type ReviewProposal, type WorkspaceApi } from './orchestrator';
+import { runCliCommand, taskBrief, type PackageDraft, type ReviewProposal, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -43,6 +43,7 @@ declare global {
       terminalResize(input: { taskId: string; cols: number; rows: number }): void;
       terminalKill(input: { taskId: string }): void;
       worktreeChanges(input: { taskId: string }): Promise<Array<{ path: string; added: number | null; removed: number | null }>>;
+      worktreeFacts(input: { taskId: string }): Promise<{ branch: string; commit: string; files: Array<{ path: string; added: number | null; removed: number | null }>; pullRequestUrl?: string }>;
       cliFolder(): Promise<string>;
       onCliRequest(callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; taskId: string | null }) => void): void;
       replyToCli(value: { id: string; reply: { ok: true; text: string; data: unknown } | { ok: false; error: string } }): void;
@@ -80,6 +81,9 @@ let keyboardMove = false;
 // Focus mode (F) on the console tab: sidebar as dots, title in the top bar, the well edge to edge.
 let consoleFocus = false;
 let decliningTaskId: string | null = null;
+// The package card edits only the words; Git facts come from the worktree (orchestrator ADR Q7).
+let packageEditing: { taskId: string; sourceRef: string; deliverables: string[]; pullRequestUrl?: string } | null = null;
+let manualPackageTaskId: string | null = null;
 // The orchestrator console (orchestrator ADR Q5): one per app, in the linked main folder, with its own terminal.
 const orchestratorKey = 'orchestrator';
 let showOrchestrator = false;
@@ -458,7 +462,12 @@ function taskActions(task: Task) {
   }
   if (mine && (task.status === 'running' || task.status === 'changes_requested')) {
     const draft = task.draftPackage ?? task.package;
-    return `<form id="package"><label>Summary<input name="summary" required value="${escape(draft?.summary)}"></label><label>Branch, commit, or document<input name="sourceRef" required value="${escape(draft?.sourceRef ?? `console-connect/${task.id}`)}"></label><label>Pull request URL, if available<input name="pullRequestUrl" type="url" value="${escape(draft?.pullRequestUrl)}"></label><label>Deliverables, one per line<textarea name="deliverables">${escape(draft?.deliverables.join('\n'))}</textarea></label><label>Verification<textarea name="verification">${escape(draft?.verification)}</textarea></label><label>Open questions<textarea name="questions">${escape(draft?.questions)}</textarea></label><div class="actions"><button type="submit">Save draft</button>${task.draftPackage ? '<button type="button" data-action="submit">Submit for review</button>' : ''}</div></form>`;
+    if (manualPackageTaskId === task.id) {
+      return `<form id="package"><label>Summary<input name="summary" required value="${escape(draft?.summary)}"></label><label>Branch, commit, or document<input name="sourceRef" required value="${escape(draft?.sourceRef ?? `console-connect/${task.id}`)}"></label><label>Pull request URL, if available<input name="pullRequestUrl" type="url" value="${escape(draft?.pullRequestUrl)}"></label><label>Deliverables, one per line<textarea name="deliverables">${escape(draft?.deliverables.join('\n'))}</textarea></label><label>Verification<textarea name="verification">${escape(draft?.verification)}</textarea></label><label>Open questions<textarea name="questions">${escape(draft?.questions)}</textarea></label><div class="actions"><button type="submit">Save draft</button>${task.draftPackage ? '<button type="button" data-action="submit">Submit for review</button>' : ''}</div></form>`;
+    }
+    if (packageEditing?.taskId === task.id) return packageEditMarkup(task, packageEditing);
+    if (task.draftPackage) return packageCardMarkup(task.draftPackage);
+    return '<p class="action-heading">No draft yet</p><p class="action-hint">Your tool drafts it with console-connect package draft, or start one here. The app fills in the changed files, commit, and pull request.</p><div class="actions"><button data-action="draft-package">Draft work package</button></div>';
   }
   if (reviewer && task.status === 'submitted') {
     if (requestingChangesTaskId !== task.id) return '<div class="actions"><button data-action="accept">Accept package</button><button class="secondary" data-action="request-changes">Request changes</button></div>';
@@ -528,6 +537,33 @@ function assignedByMeMarkup() {
     return tasks.length ? `<h3>${label}</h3>${tasks.map(task => `<button class="assigned-item" data-task="${task.id}"><strong>${escape(task.title)}</strong><small>${task.declinedBy ? `Declined by ${name(task.declinedBy)}` : name(task.assigneeId)}${task.via ? ` · ${viaLabel(task.via)}` : ''}</small></button>`).join('')}` : '';
   }).join('');
   return `<section class="assigned-by-me"><div class="section-head"><span class="section-label">Assigned by me</span><span class="section-count">${handedOut.length}</span></div>${groups}</section>`;
+}
+
+const fileLine = (file: { path: string; added: number | null; removed: number | null }) =>
+  `${file.path}${file.added !== null ? ` +${file.added}` : ''}${file.removed ? ` −${file.removed}` : ''}`;
+const maxDeliverables = 100;
+
+function packageFactsMarkup(pack: { sourceRef: string; deliverables: string[]; pullRequestUrl?: string }) {
+  return `<dt>Changed</dt><dd>${pack.deliverables.length ? `<ul class="package-files">${pack.deliverables.map(item => `<li>${escape(item)}</li>`).join('')}</ul>` : 'No file changes yet'}</dd><dt>Source</dt><dd class="package-source">${escape(pack.sourceRef)}${pack.pullRequestUrl ? ` · <span>${escape(pack.pullRequestUrl.replace(/^https:\/\/github\.com\//, ''))}</span>` : ''}</dd>`;
+}
+
+function packageCardMarkup(pack: WorkPackage) {
+  return `<section class="package-card"><p class="package-card-summary">${escape(pack.summary)}</p><dl>${packageFactsMarkup(pack)}<dt>Checked</dt><dd>${escape(pack.verification) || 'Not recorded'}</dd><dt>Question</dt><dd>${escape(pack.questions) || 'None'}</dd></dl><div class="actions"><button class="secondary" data-action="edit-package">Edit</button><span class="package-private">Only you can see this until you submit</span><button data-action="submit">Submit for review</button></div></section>`;
+}
+
+function packageEditMarkup(task: Task, facts: { sourceRef: string; deliverables: string[]; pullRequestUrl?: string }) {
+  const draft = task.draftPackage;
+  return `<form id="package-card" class="package-card"><label>Summary<textarea name="summary" required maxlength="8000">${escape(draft?.summary)}</textarea></label><dl>${packageFactsMarkup(facts)}</dl><label>Checked<textarea name="verification" maxlength="8000">${escape(draft?.verification)}</textarea></label><label>Question<textarea name="questions" maxlength="8000">${escape(draft?.questions)}</textarea></label><div class="actions"><button type="submit">Save draft</button><button type="button" class="text-button" data-action="cancel-package-edit">Cancel</button></div></form>`;
+}
+
+// Words from the person or their tool, plus the Git facts read from the task worktree on this computer.
+async function saveDraftPackage(draft: PackageDraft) {
+  const task = snapshot?.tasks.find(item => item.id === draft.taskId);
+  if (!task) throw new Error('Task not found.');
+  const facts = await window.consoleConnect.worktreeFacts({ taskId: task.id });
+  await command(task, { type: 'save-package', summary: draft.summary, sourceRef: `${facts.branch} · ${facts.commit.slice(0, 7)}`,
+    pullRequestUrl: facts.pullRequestUrl ?? task.draftPackage?.pullRequestUrl, deliverables: facts.files.slice(0, maxDeliverables).map(fileLine),
+    verification: draft.checks, questions: draft.questions, ...(draft.via ? { via: draft.via } : {}) });
 }
 
 function taskBody(task: Task) {
@@ -613,7 +649,7 @@ function sessionRailMarkup(task: Task) {
     : terminalSessionActive ? '<span class="status-pill"><i class="status-dot status-running" aria-hidden="true"></i>Running</span>'
     : '<span class="status-pill status-pill-ended"><i class="status-dot status-completed" aria-hidden="true"></i>Ended</span>';
   const canDraft = task.assigneeId === snapshot?.memberId && ['running', 'changes_requested'].includes(task.status);
-  return `<section><h2 class="section-label">This session</h2>${state}<p class="rail-meta">Started ${relativeTime(terminalStartedAt)} on this computer</p>${terminalDirectory ? `<p class="rail-meta rail-path" title="${escape(terminalDirectory)}">${escape(terminalDirectory)}</p>` : ''}</section><section><h2 class="section-label">Changed files</h2><div class="session-files">${changedFilesMarkup()}</div></section>${canDraft ? '<section><button class="rail-draft" data-action="task-tab" data-tab="package">Draft work package</button><p class="rail-meta">Stays private until you submit.</p></section>' : ''}`;
+  return `<section><h2 class="section-label">This session</h2>${state}<p class="rail-meta">Started ${relativeTime(terminalStartedAt)} on this computer</p>${terminalDirectory ? `<p class="rail-meta rail-path" title="${escape(terminalDirectory)}">${escape(terminalDirectory)}</p>` : ''}</section><section><h2 class="section-label">Changed files</h2><div class="session-files">${changedFilesMarkup()}</div></section>${canDraft ? '<section><button class="rail-draft" data-action="draft-package">Draft work package</button><p class="rail-meta">Stays private until you submit.</p></section>' : ''}`;
 }
 
 function orchestratorMarkup() {
@@ -795,7 +831,7 @@ function render() {
       const stop = localTerminal && terminalSessionActive ? '<button class="text-button session-stop" data-action="stop-console">Stop</button>' : '';
       const session = localTerminal && terminalTool ? `<span class="session-tool">${escape(toolNames[terminalTool] ?? terminalTool)}</span><span class="session-branch" title="console-connect/${escape(selected.id)}"><span class="session-branch-prefix">console-connect</span>/${escape(selected.id.slice(0, 8))}</span><span class="session-elapsed">${elapsedLabel()}</span>` : '';
       const status = localTerminal ? terminalSessionActive ? 'Session running' : 'Session ended' : watching ? 'View only' : 'No console';
-      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<span class="session-toggles"><button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button><button class="text-button" data-action="toggle-console-focus" aria-pressed="${consoleFocus}" title="Focus mode (F)">Focus<kbd>F</kbd></button></span></div>${localTerminal || watching ? `<div id="terminal" aria-label="Task console output"></div>${localTerminal && terminalSessionActive && terminalNeedsInput ? `<div class="needs-input" role="status"><i class="status-dot status-submitted" aria-hidden="true"></i>${escape(toolNames[terminalTool] ?? 'The tool')} may be waiting for you<span class="session-spacer"></span><button class="text-button" data-action="focus-terminal">Focus terminal<kbd>Ctrl</kbd><kbd>\`</kbd></button></div>` : ''}` : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
+      document.querySelector('.task-tab-content')!.insertAdjacentHTML('beforeend', `<section class="console-workspace"><div class="session-strip">${session}<span class="session-state">${status}</span><span class="session-spacer"></span>${controls}${stop}${launch}<span class="session-toggles"><button class="text-button" data-action="toggle-session-rail" aria-pressed="${sessionRailOpen()}" title="Session rail (R)">Session<kbd>R</kbd></button><button class="text-button" data-action="toggle-console-focus" aria-pressed="${consoleFocus}" title="Focus mode (F)">Focus<kbd>F</kbd></button></span></div>${localTerminal || watching ? `<div id="terminal" aria-label="Task console output"></div>${localTerminal && terminalSessionActive && terminalNeedsInput ? `<div class="needs-input" role="status"><i class="status-dot status-submitted" aria-hidden="true"></i>${escape(toolNames[terminalTool] ?? 'The tool')} may be waiting for you<span class="session-spacer"></span><button class="text-button" data-action="focus-terminal">Focus terminal<kbd>Ctrl</kbd><kbd>\`</kbd></button></div>` : ''}${localTerminal && selected.draftPackage && ['running', 'changes_requested'].includes(selected.status) ? '<div class="package-drafted" role="status"><i class="status-dot status-running" aria-hidden="true"></i>Your work package is drafted. Only you can see it.<span class="session-spacer"></span><button class="text-button" data-action="task-tab" data-tab="package">Review and submit</button></div>' : ''}` : `<div class="console-empty"><p>${sharedTerminal ? 'A teammate is sharing a console. Watch it here, or launch your own if this task is assigned to you.' : 'Launch a signed-in local tool for this task. Its output stays here while you move between task sections.'}</p></div>`}</section>`);
       if (localTerminal || watching) {
         terminalRenderSource = localTerminal ? 'local' : 'shared';
         terminalRenderedTaskId = selected.id;
@@ -989,6 +1025,13 @@ app.addEventListener('submit', async event => {
       await command(task, { type: 'decline-task', ...(note ? { note } : {}) });
     } else if (form.id === 'new-task') {
       await command(null, { type: 'create-task', taskId: crypto.randomUUID(), title: value('title'), description: value('description'), assigneeId: value('assigneeId') || null });
+    } else if (form.id === 'package-card') {
+      const task = snapshot!.tasks.find(item => item.id === packageEditing?.taskId);
+      if (!task || !packageEditing) throw new Error('Choose a task first.');
+      const facts = packageEditing;
+      packageEditing = null;
+      await command(task, { type: 'save-package', summary: value('summary'), sourceRef: facts.sourceRef, pullRequestUrl: facts.pullRequestUrl,
+        deliverables: facts.deliverables, verification: value('verification'), questions: value('questions') });
     } else if (form.id === 'package') {
       const task = snapshot!.tasks.find(item => item.id === selectedTaskId) ?? snapshot!.tasks[0];
       if (!task) throw new Error('Choose a task first.');
@@ -1300,6 +1343,17 @@ app.addEventListener('click', async event => {
       await refresh();
     }
     if (action === 'copy-cli-folder') { await window.consoleConnect.copyText(cliFolderPath); notice = 'Folder copied.'; render(); return; }
+    if (action === 'draft-package' || action === 'edit-package') {
+      taskTab = 'package';
+      const draft = task.draftPackage;
+      if (action === 'edit-package' && draft) { packageEditing = { taskId: task.id, sourceRef: draft.sourceRef, deliverables: draft.deliverables, pullRequestUrl: draft.pullRequestUrl }; render(); return; }
+      try {
+        const facts = await window.consoleConnect.worktreeFacts({ taskId: task.id });
+        packageEditing = { taskId: task.id, sourceRef: `${facts.branch} · ${facts.commit.slice(0, 7)}`, deliverables: facts.files.slice(0, maxDeliverables).map(fileLine), pullRequestUrl: facts.pullRequestUrl };
+      } catch (error) { manualPackageTaskId = task.id; notice = (error as Error).message; }
+      render(); document.querySelector<HTMLTextAreaElement>('#package-card textarea')?.focus(); return;
+    }
+    if (action === 'cancel-package-edit') { packageEditing = null; render(); return; }
     if (action === 'open-orchestrator') {
       if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
       showOrchestrator = true; showWorkspaceChat = false; render(); return;
@@ -1380,6 +1434,7 @@ const cliWorkspace: WorkspaceApi = {
     await command(task, fields);
   },
   propose: proposal => { reviewProposals.push(proposal); render(); },
+  draftPackage: saveDraftPackage,
 };
 
 function proposalMarkup() {

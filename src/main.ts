@@ -3,7 +3,7 @@ import { join, sep } from 'node:path';
 import { networkInterfaces } from 'node:os';
 import type { IPty } from 'node-pty';
 import { startHost } from './coordination';
-import { prepareWorktree, worktreeChanges } from './execution';
+import { prepareWorktree, worktreeChanges, worktreeFacts } from './execution';
 import type { Snapshot, Tool } from './coordination';
 import { prepareDecisionFile } from './decisions';
 import { privateVpnAddress } from './network';
@@ -305,6 +305,12 @@ ipcMain.on('terminal-write', (_event, input: { taskId: string; data: string }) =
 ipcMain.handle('worktree-changes', (_event, input: { taskId: string }) => {
   if (!/^[0-9a-f-]{36}$/i.test(input.taskId)) throw new Error('Choose a valid task.');
   return worktreeChanges(join(app.getPath('userData'), 'worktrees', input.taskId));
+});
+ipcMain.handle('worktree-facts', async (_event, input: { taskId: string }) => {
+  if (!/^[0-9a-f-]{36}$/i.test(input.taskId)) throw new Error('Choose a valid task.');
+  const directory = join(app.getPath('userData'), 'worktrees', input.taskId);
+  try { return await worktreeFacts(directory); }
+  catch { throw new Error('No task folder on this computer yet. Launch the console first, or fill in the package by hand.'); }
 });
 // The session's onExit cleans up and tells the renderer.
 ipcMain.on('terminal-kill', (_event, input: { taskId: string }) => sessions.get(input.taskId)?.terminal.kill());

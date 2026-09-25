@@ -7,7 +7,10 @@ export interface WorkspaceApi {
   send(taskId: string | null, fields: CommandInput): Promise<void>;
   /** Queues a review for the person to confirm with a click; it must never send anything itself. */
   propose(proposal: ReviewProposal): void;
+  /** Saves a private draft package: these words plus the Git facts the app reads from the task worktree. */
+  draftPackage(draft: PackageDraft): Promise<void>;
 }
+export interface PackageDraft { taskId: string; summary: string; checks: string; questions: string; via?: Tool }
 export interface ReviewProposal { id: string; taskId: string; action: 'accept' | 'changes'; note: string; via?: Tool }
 // `tool` is the AI tool the caller runs in, when known; commands are marked with it ("via Codex").
 export interface CliContext { cwd: string; taskId: string | null; tool?: Tool }
@@ -134,6 +137,17 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
       await send(null, { type: 'post-message', taskId: task.id, body });
       return { text: `Replied on "${task.title}" as ${me.name}.`, data: { taskId: task.id } };
     }
+  }
+  if (group === 'package' && verb === 'draft') {
+    const taskId = named.task ? findTask(state, named.task).id : context.taskId;
+    if (!taskId) throw new CliError('Run package draft in the task console, or add --task <id>.');
+    const task = findTask(state, taskId);
+    const summary = (named.summary ?? '').trim();
+    if (!summary) throw new CliError('Give the package a --summary.');
+    if (task.assigneeId !== me.id) throw new CliError('Only the person working on this task can draft its package.');
+    if (task.status !== 'running' && task.status !== 'changes_requested') throw new CliError('This task is not ready for a draft. Start its console first.');
+    await api.draftPackage({ taskId: task.id, summary, checks: (named.checks ?? '').trim(), questions: (named.questions ?? '').trim(), ...(context.tool ? { via: context.tool } : {}) });
+    return { text: `Drafted the work package for "${task.title}". Only you can see it until you submit it in Console Connect.`, data: { taskId: task.id } };
   }
   if (group === 'package' && verb === 'show') {
     const task = findTask(state, positional[0]);

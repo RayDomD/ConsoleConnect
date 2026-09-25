@@ -357,3 +357,17 @@ kbd{display:inline-block;min-width:20px;padding:1px 5px;border-radius:5px;backgr
 #orchestrator-terminal{height:min(58vh,680px);min-height:320px;padding:10px 14px;background:var(--color-surface)}
 @media(min-width:901px){.console-active #orchestrator-terminal{flex:1;min-height:240px;height:auto}}
 .session-place{color:var(--color-text)}
+
+/* Auto-filled package card (orchestrator 2.8) */
+.package-card{display:grid;gap:14px}
+.package-card-summary{margin:0;font-size:16px;line-height:1.6}
+.package-card dl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 18px;margin:0;font-size:13px}
+.package-card dt{font-weight:600;color:var(--color-muted)}
+.package-card dd{margin:0;overflow-wrap:anywhere}
+.package-files{margin:0;padding:0;list-style:none;font:12px/1.7 var(--font-mono)}
+.package-source{font:12px/1.7 var(--font-mono)}
+.package-card label{margin:0}
+.package-card .actions{margin-top:4px}
+.package-private{flex:1;font-size:12px;color:var(--color-muted);text-align:right}
+.package-drafted{display:flex;align-items:center;gap:10px;padding:6px 10px 6px 14px;background:color-mix(in oklab,var(--color-success) 10%,var(--color-surface));box-shadow:inset 0 1px 0 color-mix(in oklab,var(--color-success) 22%,transparent);color:var(--color-success);font-size:13px;font-weight:500}
+.package-drafted .text-button{padding:6px 8px;font-size:12px;color:var(--color-success)}

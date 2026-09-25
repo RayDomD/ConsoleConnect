@@ -13,6 +13,8 @@ const usage = `console-connect: work in your open Console Connect project from a
   task decline <id> [--note <why>]
   task reply <id> <message>            Post in the task's discussion
   ask <message>                        Ask on the task this console belongs to
+  package draft --summary <s> [--checks <c>] [--questions <q>] [--task <id>]
+                                       Draft your work package; the app adds the Git facts
   package show <id>                    A submitted package, or your own draft
   review propose <id> --accept|--changes --note <text>
                                        Prepare a review; it waits for your click in the app
