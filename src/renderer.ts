@@ -104,6 +104,9 @@ let ideaDraft: { title: string; note: string; size: IdeaSize } | null = null;
 let skippingIdeaId: string | null = null;
 let skipDraft = '';
 let confirmingDeleteIdeaId: string | null = null;
+// Arrow keys on a closed select fire change at every step; only the size the person settles on is sent.
+const ideaSizeSettleMs = 700;
+const ideaSizeTimers = new Map<string, ReturnType<typeof setTimeout>>();
 // The docs setup offer: shown to the Owner until they answer, once the project folder is known.
 const docsSetupKey = (workspaceId: string) => `console-connect.docs-setup.${workspaceId}`;
 let docsPlan: { workspaceId: string; missing: string[] | null } | null = null;
@@ -1390,8 +1393,14 @@ app.addEventListener('change', event => {
   if (target.id === 'office-sharing') localStorage.setItem(officeSharingKey, (target as HTMLSelectElement).value);
   if (ideaDraft && target.closest('#new-idea') && (target as HTMLInputElement).name === 'size') { ideaDraft.size = (target as HTMLInputElement).value as IdeaSize; render(); }
   if (target.dataset.ideaSize) {
-    const idea = snapshot?.ideas?.find(item => item.id === target.dataset.ideaSize);
-    if (idea) void command(null, { type: 'update-idea', ideaId: idea.id, revision: idea.revision, size: (target as HTMLSelectElement).value }).catch(error => { notice = (error as Error).message; render(); });
+    const ideaId = target.dataset.ideaSize;
+    const size = (target as HTMLSelectElement).value;
+    clearTimeout(ideaSizeTimers.get(ideaId));
+    ideaSizeTimers.set(ideaId, setTimeout(() => {
+      ideaSizeTimers.delete(ideaId);
+      const idea = snapshot?.ideas?.find(item => item.id === ideaId);
+      if (idea && idea.size !== size) void command(null, { type: 'update-idea', ideaId, revision: idea.revision, size }).catch(error => { notice = (error as Error).message; render(); });
+    }, ideaSizeSettleMs));
   }
   if (target.dataset.auto) {
     const settings = loadAutoSettings();
