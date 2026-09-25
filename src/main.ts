@@ -1,6 +1,7 @@
 import { app, BrowserWindow, Notification, clipboard, dialog, ipcMain, shell } from 'electron';
 import { join, sep } from 'node:path';
 import { networkInterfaces } from 'node:os';
+import { readFile } from 'node:fs/promises';
 import type { IPty } from 'node-pty';
 import { startHost } from './coordination';
 import { prepareWorktree, worktreeChanges, worktreeFacts } from './execution';
@@ -13,6 +14,7 @@ import { oauthCallbackUrl } from './oauth';
 import { receiveOAuthCallback } from './oauth-callback';
 import { consoleEnvironment, startCliServer, writeCliShims } from './cli-server';
 import { readProjectKnowledge, writeDraftProjectMap } from './project-knowledge';
+import { playbookPath, playbookStage } from './orchestrator';
 
 let hosted: Awaited<ReturnType<typeof startHost>> | null = null;
 type WorkspaceConnection = { url: string; token: string; mode?: 'local' } | {
@@ -330,6 +332,19 @@ ipcMain.handle('project-knowledge', async (_event, input: { repositoryPath?: str
   if (!input.repositoryPath) return null;
   const root = await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository);
   return { source: 'main folder', ...await readProjectKnowledge(root, { ...input, checkMain: true }) };
+});
+
+// A repo playbook replaces the built-in one (guided path ADR Q22): read from the task worktree or the main folder.
+ipcMain.handle('read-playbook', async (_event, input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; stage: string }) => {
+  const stage = playbookStage(input.stage);
+  if (!stage || stage !== input.stage) throw new Error('Choose a valid stage.');
+  let root: string;
+  if (input.taskId) {
+    if (!/^[0-9a-f-]{36}$/i.test(input.taskId)) throw new Error('Choose a valid task.');
+    root = join(app.getPath('userData'), 'worktrees', input.taskId);
+  } else if (input.repositoryPath) root = await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository);
+  else return null;
+  return readFile(join(root, playbookPath(stage)), 'utf8').catch(() => null);
 });
 
 ipcMain.handle('draft-project-map', async (_event, input: { repositoryPath: string; workspaceRepository: string }) =>

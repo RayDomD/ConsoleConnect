@@ -17,10 +17,16 @@ const usage = `console-connect: work in your open Console Connect project from a
   package draft --summary <s> [--checks <c>] [--questions <q>] [--task <id>]
                                        Draft your work package; the app adds the Git facts
   package show <id>                    A submitted package, or your own draft
+  idea list                            Open ideas and their stages
+  idea show <id>                       One idea, its documents, tasks, and skips
+  idea create --title <t> --size quick|feature|big [--note <n>]
+  idea link <id> [--task <id,id>] [--doc <path> [--stage <stage>]] [--spec <decision id>]
+  playbook talk|write|split|build|review [idea]
+                                       Instructions for a stage; docs/playbooks/<stage>.md replaces them
   review propose <id> --accept|--changes --note <text>
                                        Prepare a review; it waits for your click in the app
 
-Add --json for machine-readable output. Task ids accept a unique prefix.
+Add --json for machine-readable output. Task and idea ids accept a unique prefix.
 Actions run as you, through your open app. Accepting work and approving decisions need a click in the app.`;
 
 async function main() {

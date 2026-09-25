@@ -30,6 +30,7 @@ const known: Array<{ path: string; group: string; description: string; protected
   { path: 'docs/decisions/', group: 'Decisions and plans', description: 'Official team decisions, written by Console Connect.', protected: true },
   { path: 'docs/adr/', group: 'Decisions and plans', description: 'Architecture and design records.', protected: true },
   { path: 'docs/plans/', group: 'Decisions and plans', description: 'Approved plans and their status.' },
+  { path: 'docs/playbooks/', group: 'Decisions and plans', description: 'How this team runs each stage of an idea. Replaces the built-in playbooks.' },
   { path: 'docs/implementation-status.md', group: 'Evidence', description: "What's verified. Update it when you verify something." },
 ];
 

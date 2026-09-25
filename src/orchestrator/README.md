@@ -7,6 +7,7 @@ The app side of `console-connect` (orchestrator ADR). It turns the words a perso
 - `runCliCommand(argv, context, api)`: runs one command. `context.taskId` is the task whose worktree the command ran in, if any.
 - `WorkspaceApi`: what the app lends it, the current snapshot and `send(taskId, fields)`.
 - `CliError`: a refusal whose message is shown to the caller as is.
+- Playbooks (guided path ADR Q22): `playbookText(stage, override, idea?)` gives a stage's instructions, the repo's `docs/playbooks/<stage>.md` (`playbookPath`) when the app passes one in, otherwise the built-in text. `playbookStage` accepts stage names and the ADR's earlier names; `stageNames`, `sizeNames`, and `stageDocument` give the UI names and each stage's file.
 
 ## Not handled here
 

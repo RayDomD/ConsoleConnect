@@ -1,5 +1,6 @@
-import type { CommandInput, Member, Snapshot, Task, Tool } from '../../coordination';
+import type { CommandInput, Idea, Member, Snapshot, Task, Tool } from '../../coordination';
 import { taskBrief } from './brief';
+import { playbookPath, playbookStage, playbookText, sizeNames, stageNames } from './playbooks';
 
 // What the app lends the command runner: the current snapshot and a way to send a command as the person.
 // `send` receives a task id for task-revision commands (the app adds the task's revision) and null otherwise.
@@ -16,6 +17,8 @@ export interface WorkspaceApi {
   autoSummary?(): string;
   /** The project map and heads-ups, read from main (taskId null) or from the task's branch. */
   projectKnowledge?(taskId: string | null): Promise<{ source: string; lines: string[]; flags: string[] } | null>;
+  /** The repo's docs/playbooks/<stage>.md, from main (taskId null) or the task's branch; null when absent. */
+  readPlaybook?(stage: string, taskId: string | null): Promise<string | null>;
 }
 
 function knowledgeText(knowledge: { source: string; lines: string[]; flags: string[] } | null) {
@@ -65,6 +68,20 @@ function findMember(state: Snapshot, name: string | undefined) {
   return matches[0]!;
 }
 
+function findIdea(state: Snapshot, ref: string | undefined) {
+  if (!ref) throw new CliError('Give an idea id.');
+  const ideas = state.ideas ?? [];
+  const matches = ideas.filter(idea => idea.id === ref || idea.id.startsWith(ref.toLowerCase()));
+  if (matches.length > 1 && !matches.some(idea => idea.id === ref)) throw new CliError(`More than one idea starts with "${ref}". Use more of the id.`);
+  const idea = matches.find(item => item.id === ref) ?? matches[0];
+  if (!idea) throw new CliError(`No idea matches "${ref}". Run idea list to see ids.`);
+  return idea;
+}
+
+const stageLabel = (idea: Idea) => idea.stage === 'done' ? 'Done' : stageNames[idea.stage];
+const ideaLine = (idea: Idea) => `${shortId(idea.id)}  ${stageLabel(idea)}  ${idea.title} · ${sizeNames[idea.size]}`;
+const ideaSummary = (idea: Idea) => ({ id: idea.id, title: idea.title, size: idea.size, stage: idea.stage, revision: idea.revision });
+
 const memberName = (state: Snapshot, id: string | null | undefined) => state.members.find(member => member.id === id)?.name;
 const openTasks = (state: Snapshot) => state.tasks.filter(task => task.status !== 'completed');
 
@@ -95,6 +112,7 @@ function brief(state: Snapshot, me: Member, auto: string): CliResult {
   const assign = canAssign(state, me);
   const rule = assigningRules[state.settings?.assigningRule ?? 'anyone'];
   const commands = ['task list/show/create', ...(assign ? ['task assign'] : []), 'task claim/decline/reply', 'ask', 'package draft/show',
+    'idea list/show/create/link', 'playbook <stage> [idea]',
     ...(me.role === 'contributor' ? [] : ['review propose']), 'brief --task <id>'];
   const text = [
     `${state.workspace.name} (${state.workspace.repository}). You are ${me.name}, ${sentenceCase(me.role)}.`,
@@ -187,6 +205,51 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
       if (!body) throw new CliError('Write the reply after the task id.');
       await send(null, { type: 'post-message', taskId: task.id, body });
       return { text: `Replied on "${task.title}" as ${me.name}.`, data: { taskId: task.id } };
+    }
+  }
+  if (group === 'playbook') {
+    const stage = playbookStage(verb);
+    if (!stage) throw new CliError('Choose a stage: talk, write, split, build, or review.');
+    const idea = positional[0] ? findIdea(state, positional[0]) : undefined;
+    const override = await api.readPlaybook?.(stage, context.taskId) ?? null;
+    const source = override?.trim() ? playbookPath(stage) : 'built-in';
+    return { text: playbookText(stage, override, idea), data: { stage, source, ideaId: idea?.id ?? null } };
+  }
+  if (group === 'idea') {
+    if (verb === 'list') {
+      const ideas = (state.ideas ?? []).filter(idea => idea.stage !== 'done');
+      return { text: ideas.length ? ideas.map(ideaLine).join('\n') : 'No open ideas.', data: { ideas: ideas.map(ideaSummary) } };
+    }
+    if (verb === 'show') {
+      const idea = findIdea(state, positional[0]);
+      const tasks = state.tasks.filter(task => idea.taskIds.includes(task.id));
+      const text = [ideaLine(idea), idea.note || '(No note.)',
+        ...idea.documents.map(item => `${stageNames[item.stage]}: ${item.path}`),
+        ...tasks.map(task => `Task ${taskLine(state, task)}`),
+        ...idea.skipped.map(item => `Skipped ${stageNames[item.stage]} (${memberName(state, item.by) ?? 'Teammate'}): ${item.reason}`)].join('\n');
+      return { text, data: { idea } };
+    }
+    if (verb === 'create') {
+      const title = named.title?.trim();
+      if (!title) throw new CliError('Give the idea a --title.');
+      const size = named.size?.toLowerCase();
+      if (size !== 'quick' && size !== 'feature' && size !== 'big') throw new CliError('Choose --size quick, feature, or big.');
+      const ideaId = crypto.randomUUID();
+      await send(null, { type: 'create-idea', ideaId, title, size, ...(named.note ? { note: named.note } : {}) });
+      const first = size === 'quick' ? 'build' : 'talk';
+      return { text: `Created idea ${shortId(ideaId)} "${title}", ${sizeNames[size]}, at ${stageNames[first]}.`, data: { ideaId } };
+    }
+    if (verb === 'link') {
+      const idea = findIdea(state, positional[0]);
+      const taskIds = named.task ? named.task.split(',').filter(ref => ref.trim()).map(ref => findTask(state, ref.trim()).id) : [];
+      const path = named.doc?.trim();
+      const stage = named.stage ? playbookStage(named.stage) : idea.stage === 'done' ? null : idea.stage;
+      if (path && !stage) throw new CliError('Say which stage the document belongs to with --stage.');
+      const spec = named.spec?.trim();
+      if (!taskIds.length && !path && !spec) throw new CliError('Link something: --task <id,id>, --doc <path>, or --spec <decision id>.');
+      await send(null, { type: 'link-idea', ideaId: idea.id, revision: idea.revision,
+        ...(taskIds.length ? { taskIds } : {}), ...(path && stage ? { document: { stage, path } } : {}), ...(spec ? { specDecisionId: spec } : {}) });
+      return { text: `Linked to "${idea.title}".`, data: { ideaId: idea.id } };
     }
   }
   if (group === 'package' && verb === 'draft') {

@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('consoleConnect', {
   worktreeFacts: (input: { taskId: string }) => ipcRenderer.invoke('worktree-facts', input),
   projectKnowledge: (input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; decisionIds: string[] }) => ipcRenderer.invoke('project-knowledge', input),
   draftProjectMap: (input: { repositoryPath: string; workspaceRepository: string }) => ipcRenderer.invoke('draft-project-map', input),
+  readPlaybook: (input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; stage: string }) => ipcRenderer.invoke('read-playbook', input),
   cliFolder: () => ipcRenderer.invoke('cli-folder'),
   onCliRequest: (callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; console?: string; taskId: string | null }) => void) =>
     ipcRenderer.on('cli-request', (_event, value) => callback(value)),

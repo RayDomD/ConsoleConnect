@@ -50,6 +50,7 @@ declare global {
       worktreeFacts(input: { taskId: string }): Promise<{ branch: string; commit: string; files: Array<{ path: string; added: number | null; removed: number | null }>; pullRequestUrl?: string }>;
       projectKnowledge(input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; decisionIds: string[] }): Promise<{ source: string; mapText: string | null; decisionFiles: Record<string, string | null>; commits: Array<{ sha: string; subject: string; paths: string[]; pullRequests: string[] }>; commitsChecked: boolean } | null>;
       draftProjectMap(input: { repositoryPath: string; workspaceRepository: string }): Promise<string>;
+      readPlaybook(input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; stage: string }): Promise<string | null>;
       cliFolder(): Promise<string>;
       onCliRequest(callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; console?: string; taskId: string | null }) => void): void;
       replyToCli(value: { id: string; reply: { ok: true; text: string; data: unknown } | { ok: false; error: string } }): void;
@@ -1858,6 +1859,8 @@ const cliWorkspace: WorkspaceApi = {
   propose: proposal => { reviewProposals.push(proposal); render(); },
   hold: item => { heldAssignments.push({ id: crypto.randomUUID(), ...item }); render(); },
   projectKnowledge: loadProjectKnowledge,
+  readPlaybook: async (stage, taskId) => snapshot ? window.consoleConnect.readPlaybook({ repositoryPath: savedProjectFolder(), taskId: taskId ?? undefined,
+    workspaceRepository: snapshot.workspace.repository, stage }) : null,
   autoSummary: () => {
     const settings = loadAutoSettings();
     const kinds = (['questions', 'stalls', 'submissions'] as const).filter(key => settings[key] === 'auto');
