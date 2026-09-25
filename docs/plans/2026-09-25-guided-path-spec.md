@@ -1,7 +1,7 @@
 ---
 title: Guided path spec
 date: 2026-09-25
-status: In Progress
+status: Done
 summary: Contracts and tickets for roadmap 4.1, from the guided path ADR Q14–Q16 and the stage grilling Q19–Q24.
 ---
 
@@ -9,7 +9,7 @@ summary: Contracts and tickets for roadmap 4.1, from the guided path ADR Q14–Q
 
 ## Status & Progress Summary
 
-Spec written 2026-09-25 after the stage grilling (ADR Q19–Q24). Tickets 4.1a–4.1g below.
+Spec written 2026-09-25 after the stage grilling (ADR Q19–Q24). All tickets 4.1a–4.1g done on 2026-09-25, one commit each (summary: `docs/session-summaries/2026-09-25-guided-path-summary.md`).
 
 ## Context
 
@@ -56,3 +56,4 @@ Spec written 2026-09-25 after the stage grilling (ADR Q19–Q24). Tickets 4.1a�
 ## Changelog
 
 - 2026-09-25: Spec written from the ADR and the stage grilling.
+- 2026-09-25: 4.1a–4.1g built. Playbooks take stage names and accept the ADR's grill, spec, and tickets as aliases. The sample idea is sent by the app after it creates a workspace, so hosted workspaces need no migration. The card's size suggestion uses the task count; the "Sessions" heading rule is implemented but the card does not read the talk document yet.

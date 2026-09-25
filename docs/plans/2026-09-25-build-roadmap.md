@@ -1,7 +1,7 @@
 ---
 title: Build roadmap after the 2026-09-25 design session
 date: 2026-09-25
-status: In Progress
+status: Done
 summary: Ordered build of housekeeping, P1–P9 and console workspace, orchestrator, Office, and guided path, from the ADRs written on 2026-09-25.
 ---
 
@@ -9,7 +9,7 @@ summary: Ordered build of housekeeping, P1–P9 and console workspace, orchestra
 
 ## Status & Progress Summary
 
-Phase 0 and Phase 1 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-ui-improvements-summary.md`). Phase 2 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-orchestrator-summary.md`). Phase 3 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-office-summary.md`); hosted presence and sharing still need the Supabase deploy. Phase 4.0 grilled (ADR Q19–Q24); spec `docs/plans/2026-09-25-guided-path-spec.md`. Next: 4.1a.
+Phase 0 and Phase 1 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-ui-improvements-summary.md`). Phase 2 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-orchestrator-summary.md`). Phase 3 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-office-summary.md`); hosted presence and sharing still need the Supabase deploy. Phase 4 done on 2026-09-25 (spec `docs/plans/2026-09-25-guided-path-spec.md`, summary `docs/session-summaries/2026-09-25-guided-path-summary.md`); the spec's 4.1a–4.1g tickets cover roadmap items 4.1–4.4. Every phase is built. The Supabase deploy (two migrations and the Edge Function) is still to be confirmed and run.
 
 Everything decided on 2026-09-25 and not yet built. Handoff for fresh sessions: `.goal/2026-09-25-build.md`. Sizes are rough session estimates.
 
@@ -89,3 +89,4 @@ Real Claude Code and Antigravity prompt checks, GitHub PR creation and approval,
 ## Changelog
 
 - 2026-09-25: Created from the design session's ADRs; handoff written to `.goal/2026-09-25-build.md`.
+- 2026-09-25: Phase 4 done: ideas, blockers, playbooks, recommendations, sample idea, and docs scaffold. Roadmap Done.
