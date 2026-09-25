@@ -1,35 +1,11 @@
 import { waitingOn } from '../../blockers';
-import { ideaPaths, RequestError, type Command, type Idea, type Member, type WorkspaceState } from './protocol';
+import { ideaGate, ideaPaths, nextStage, RequestError, type Command, type Member, type WorkspaceState } from './protocol';
 
 // Decisions that stay with people (orchestrator ADR Q4): a tool may propose them, only a click sends them.
 // Marking an idea ready is a gated move that waits for a person's click (guided path ADR Q20).
 const clickOnly = new Set<Command['type']>(['accept-package', 'request-changes', 'approve-decision', 'approve-task', 'mark-idea-ready']);
 
 type IdeaCommand = Extract<Command, { ideaId: string }>;
-
-function nextStage(idea: Idea): Idea['stage'] {
-  if (idea.stage === 'done') return 'done';
-  const path = ideaPaths[idea.size];
-  return path[path.indexOf(idea.stage) + 1] ?? 'done';
-}
-
-/** The gate for leaving the idea's current stage, or null when it is open (ADR Q20). */
-function stageGate(state: WorkspaceState, idea: Idea): string | null {
-  const linked = state.tasks.filter(task => idea.taskIds.includes(task.id));
-  switch (idea.stage) {
-    case 'talk': return idea.readyBy ? null : 'An Owner or Reviewer must mark it ready.';
-    case 'write': return state.decisions.some(item => item.id === idea.specDecisionId && item.status === 'official')
-      ? null : 'Approve the spec as a decision first.';
-    case 'split': return linked.length ? null : 'Link at least one task.';
-    case 'build':
-      if (!linked.length) return 'Link at least one task.';
-      return linked.every(task => task.status === 'accepted' || task.status === 'completed') ? null : 'Waiting for every linked task to be accepted.';
-    case 'review':
-      if (!linked.length) return 'Link at least one task.';
-      return linked.every(task => task.status === 'completed') ? null : 'Waiting for every linked task to be completed.';
-    case 'done': return 'This idea is done.';
-  }
-}
 
 function applyIdeaCommand(state: WorkspaceState, actor: Member, command: IdeaCommand) {
   const ideas = state.ideas ??= [];
@@ -66,7 +42,7 @@ function applyIdeaCommand(state: WorkspaceState, actor: Member, command: IdeaCom
       idea.readyBy = actor.id;
       break;
     case 'advance-idea': {
-      const gate = stageGate(state, idea);
+      const gate = ideaGate(idea, state.tasks, state.decisions);
       if (gate) throw new RequestError(409, gate);
       idea.stage = nextStage(idea);
       break;

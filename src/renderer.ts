@@ -1,7 +1,7 @@
 import { loadTheme, selectTheme, themes, type ThemeId } from './themes';
-import type { Message, Snapshot, Task, WorkPackage } from './coordination';
+import type { Idea, IdeaSize, Message, Snapshot, Task, WorkPackage } from './coordination';
 import { waitingOn } from './blockers';
-import { commandSchema, toolSchema, type AssigningRule } from './coordination/_internal/protocol';
+import { commandSchema, ideaGate, ideaPaths, ideaStages, toolSchema, type AssigningRule } from './coordination/_internal/protocol';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { flushPending, loadPending, savePending } from './offline';
@@ -12,7 +12,7 @@ import { officeRooms, type OfficeCard } from './office';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { consoleReadiness, glimpse, needsInput } from './console-state';
-import { defaultAutoSettings, detectEvents, detectWorkerEvents, knowledgeFlags, mapLines, parseProjectMap, protectedChanges, type MapGroup, eventLine, planAutoRun, runCliCommand, taskBrief, workerLine, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkerEvent, type WorkspaceApi } from './orchestrator';
+import { defaultAutoSettings, sizeNames, stageNames, detectEvents, detectWorkerEvents, knowledgeFlags, mapLines, parseProjectMap, protectedChanges, type MapGroup, eventLine, planAutoRun, runCliCommand, taskBrief, workerLine, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkerEvent, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -96,6 +96,11 @@ const orchestratorKey = 'orchestrator';
 let showOrchestrator = false;
 // The Office (Office ADR Q17): who is here and what they are working on, refreshed while open.
 let showOffice = false;
+// Ideas (guided path ADR Q14, Q15): cards on their size path, with the New idea form kept across live renders.
+let showIdeas = false;
+let ideaDraft: { title: string; note: string; size: IdeaSize } | null = null;
+let skippingIdeaId: string | null = null;
+let skipDraft = '';
 const officeRefreshMs = 5_000;
 let renderedPresence = '';
 type OrchestratorSession = { tool: string; workspaceId: string; directory: string; startedAt: number; endedAt: number; active: boolean; output: string; lastOutputAt: number };
@@ -956,6 +961,79 @@ function officeCardMarkup(card: OfficeCard, meId: string) {
   return `<article class="office-card" data-flip="office-${escape(card.memberId)}"><div class="office-card-head"><span class="avatar" aria-hidden="true">${initial}</span><strong>${escape(card.name)}${mine ? ' (you)' : ''}</strong>${pill}</div>${what}${console}${huddle}${action ? `<div class="office-actions">${action}</div>` : ''}</article>`;
 }
 
+const sizeHints: Record<IdeaSize, string> = {
+  quick: 'A bug or small change. Straight to a task.',
+  feature: 'A few tasks. Talk it through, then split.',
+  big: 'Many sessions. The full path with a spec.',
+};
+
+// The stage chips: passed stages tick, skipped ones strike through with their reason, the current one is filled.
+function ideaPathMarkup(idea: Idea) {
+  const path = ideaPaths[idea.size];
+  const at = idea.stage === 'done' ? path.length : path.indexOf(idea.stage);
+  return `<ol class="idea-path" aria-label="Stages">${path.map((stage, index) => {
+    const skip = index < at ? idea.skipped.findLast(item => item.stage === stage) : undefined;
+    const state = skip ? 'skipped' : index < at ? 'done' : index === at ? 'on' : '';
+    const label = skip ? `${stageNames[stage]}, skipped` : index < at ? `${stageNames[stage]} ✓` : stageNames[stage];
+    return `<li class="idea-chip ${state}"${index === at ? ' aria-current="step"' : ''}${skip ? ` title="${escape(skip.reason)}"` : ''}>${escape(label)}</li>`;
+  }).join('')}</ol>`;
+}
+
+function ideaCardMarkup(idea: Idea) {
+  const me = snapshot!.members.find(member => member.id === snapshot!.memberId);
+  const person = (id: string) => snapshot!.members.find(member => member.id === id)?.name ?? 'A teammate';
+  const lead = me?.role === 'owner' || me?.role === 'reviewer';
+  const short = idea.id.slice(0, 8);
+  const tasks = snapshot!.tasks.filter(task => idea.taskIds.includes(task.id));
+  const skips = idea.skipped.map(item => `<li>Skipped ${escape(stageNames[item.stage])}: “${escape(item.reason)}” · ${escape(person(item.by))}</li>`).join('');
+  const files = idea.documents.map(item => `<li><span>${escape(stageNames[item.stage])}</span><code>${escape(item.path)}</code></li>`).join('');
+  const taskRows = tasks.map(task => `<li><button class="text-button idea-task" data-action="open-task" data-task="${task.id}"><i class="status-dot status-${task.status}" aria-hidden="true"></i>${escape(task.title)}<small>${escape(taskListNote(snapshot!.tasks, task))}</small></button></li>`).join('');
+  let next = '<p class="idea-next-line">Done.</p>';
+  let actions = '';
+  if (idea.stage !== 'done') {
+    const gate = ideaGate(idea, snapshot!.tasks, snapshot!.decisions);
+    const last = ideaPaths[idea.size].at(-1) === idea.stage;
+    const hint = idea.stage === 'build' ? 'Work the linked tasks through their consoles.' : `Run <code>console-connect playbook ${idea.stage} ${short}</code> in the orchestrator.`;
+    const ready = idea.stage === 'talk' && idea.readyBy ? ` Marked ready by ${escape(person(idea.readyBy))}.` : '';
+    next = `<p class="idea-next-line"><strong>${escape(stageNames[idea.stage])}</strong> ${hint}${ready}</p>${gate ? `<p class="idea-gate">${escape(gate)}</p>` : ''}`;
+    if (skippingIdeaId === idea.id) {
+      actions = `<form id="skip-idea" class="idea-skip-form" data-idea="${idea.id}"><label>Why skip ${escape(stageNames[idea.stage])}?<input name="reason" maxlength="200" required value="${escape(skipDraft)}" placeholder="One line, for example: small fix, no spec"></label><div class="actions"><button type="submit" class="secondary">Skip stage</button><button type="button" class="text-button" data-action="cancel-skip-idea">Cancel</button></div></form>`;
+    } else {
+      const markReady = idea.stage === 'talk' && !idea.readyBy && lead ? `<button data-action="mark-idea-ready" data-idea="${idea.id}">Mark ready</button>` : '';
+      const advance = gate ? '' : `<button data-action="advance-idea" data-idea="${idea.id}">${last ? 'Mark done' : 'Next step'}</button>`;
+      actions = `<div class="actions">${markReady}${advance}<button class="secondary" data-action="start-skip-idea" data-idea="${idea.id}">Skip stage</button></div>`;
+    }
+  }
+  const canDelete = idea.createdBy === snapshot!.memberId || me?.role === 'owner';
+  const sizes = (Object.keys(sizeNames) as IdeaSize[]).map(size => `<option value="${size}" ${size === idea.size ? 'selected' : ''}>${sizeNames[size]}</option>`).join('');
+  return `<article class="idea-card" data-idea="${idea.id}"><div class="idea-card-head"><h2>${escape(idea.title)}</h2>${idea.sample ? '<span class="office-pill">Sample</span>' : ''}<span class="idea-id">${short}</span></div>`
+    + `${idea.note ? `<p class="idea-note">${escape(idea.note)}</p>` : ''}${ideaPathMarkup(idea)}`
+    + `<div class="idea-next">${next}${actions}</div>`
+    + `${files ? `<ul class="idea-files">${files}</ul>` : ''}${taskRows ? `<ul class="idea-tasks">${taskRows}</ul>` : ''}${skips ? `<ul class="idea-skips">${skips}</ul>` : ''}`
+    + `<div class="idea-foot"><label class="idea-size">Size<select data-idea-size="${idea.id}">${sizes}</select></label>${canDelete ? `<button class="text-button" data-action="delete-idea" data-idea="${idea.id}">Delete</button>` : ''}</div></article>`;
+}
+
+function newIdeaMarkup() {
+  const draft = ideaDraft!;
+  const tiles = (Object.keys(sizeNames) as IdeaSize[]).map(size => `<label class="idea-size-tile"><input type="radio" name="size" value="${size}" ${size === draft.size ? 'checked' : ''}><b>${sizeNames[size]}</b><small>${sizeHints[size]}</small></label>`).join('');
+  const chips = ideaStages.map(stage => `<li class="idea-chip ${ideaPaths[draft.size].includes(stage) ? '' : 'off'}">${stageNames[stage]}</li>`).join('');
+  return `<form id="new-idea" class="idea-form"><h2>New idea</h2><label>Title<input name="title" maxlength="160" required value="${escape(draft.title)}" placeholder="What might the team build?"></label>`
+    + `<fieldset class="idea-sizes"><legend>Size</legend>${tiles}</fieldset><ol class="idea-path idea-preview" aria-label="Stages for this size">${chips}</ol>`
+    + `<label>Note (optional)<textarea name="note" maxlength="32000">${escape(draft.note)}</textarea></label>`
+    + '<p class="rail-meta">You can change the size later. Skipping a stage asks for one line of why.</p>'
+    + '<div class="actions"><button type="submit">Create idea</button><button type="button" class="text-button" data-action="cancel-idea">Cancel</button></div></form>';
+}
+
+function ideasMarkup() {
+  const ideas = snapshot!.ideas ?? [];
+  const open = ideas.filter(idea => idea.stage !== 'done');
+  const done = ideas.filter(idea => idea.stage === 'done');
+  const empty = '<p class="rail-meta">No ideas yet. Add one when the team has something to build. Its size sets the stages it goes through, and plain tasks still work without one.</p>';
+  return `<div class="office-head"><div><h1>Ideas</h1><div class="meta"><span>${open.length} open</span>${done.length ? `<span aria-hidden="true">·</span><span>${done.length} done</span>` : ''}</div></div>${ideaDraft ? '' : '<button data-action="new-idea">New idea</button>'}</div>`
+    + `${ideaDraft ? newIdeaMarkup() : ''}<div class="idea-list">${open.map(ideaCardMarkup).join('') || (ideaDraft ? '' : empty)}</div>`
+    + `${done.length ? `<section class="office-room"><div class="section-head"><h2 class="section-label">Done</h2><span class="section-count">${done.length}</span></div><div class="idea-list">${done.map(ideaCardMarkup).join('')}</div></section>` : ''}`;
+}
+
 function officeMarkup() {
   const rooms = officeRooms(snapshot!, snapshot!.presence ?? []);
   const meId = snapshot!.memberId;
@@ -1084,7 +1162,7 @@ function render() {
   const renderedTask = snapshot?.tasks.find(task => task.id === selectedTaskId) ?? snapshot?.tasks[0];
   const nextTerminalSource = renderedTask?.id === terminalTaskId ? 'local'
     : renderedTask?.id === watchedTaskId ? 'shared' : null;
-  const keepTerminal = Boolean(terminal && view === 'review' && taskTab === 'console' && !showWorkspaceChat && !showOrchestrator && !showOffice
+  const keepTerminal = Boolean(terminal && view === 'review' && taskTab === 'console' && !showWorkspaceChat && !showOrchestrator && !showOffice && !showIdeas
     && renderedTask?.id === terminalRenderedTaskId && nextTerminalSource === terminalRenderSource);
   const terminalHadFocus = keepTerminal && terminal?.element?.contains(document.activeElement);
   if (!keepTerminal) {
@@ -1104,7 +1182,7 @@ function render() {
   const selected = snapshot.tasks.find(task => task.id === selectedTaskId) ?? snapshot.tasks[0];
   const me = snapshot.members.find(member => member.id === snapshot!.memberId);
   const unread = unreadTeamMessages();
-  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(taskListNote(snapshot!.tasks, task))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || showOrchestrator || showOffice || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : showOrchestrator ? 'Orchestrator' : showOffice ? 'Office' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
+  app.innerHTML = `<div class="workspace"><aside><div class="brand">CONSOLE <b>CONNECT</b></div><div class="workspace-name">${escape(snapshot.workspace.name)}<small>${escape(snapshot.workspace.repository)}</small></div><div class="aside-label"><span>Tasks</span><button class="icon-button new-task" data-action="new-task" aria-label="New task" title="New task (N)">${plusIcon}</button></div><div class="task-list">${snapshot.tasks.map(task => `<button class="task-link ${task.id === selected?.id ? 'active' : ''}" data-task="${task.id}" title="${escape(task.title)}"><i class="status-dot status-${task.status}" aria-hidden="true"></i><strong>${escape(task.title)}</strong><small>${escape(taskListNote(snapshot!.tasks, task))}</small></button>`).join('')}</div><div class="sidebar-bottom"><span class="avatar" aria-hidden="true">${escape((me?.name ?? '?').slice(0, 1).toUpperCase())}</span><div class="identity"><span>${escape(me?.name)}</span><small>${escape(sentenceCase(me?.role ?? ''))}</small></div><button class="icon-button settings-button" data-action="settings" aria-label="Settings" title="Settings">${gearIcon}</button></div></aside><main class="desk"><header class="topbar"><nav class="breadcrumb" aria-label="Location"><button class="text-button" data-action="disconnect" title="Back to projects">${escape(snapshot.workspace.name)}</button>${showWorkspaceChat || showOrchestrator || showOffice || showIdeas || selected ? `<span aria-hidden="true">/</span><span class="breadcrumb-current" aria-current="page">${escape(showWorkspaceChat ? 'Team chat' : showOrchestrator ? 'Orchestrator' : showOffice ? 'Office' : showIdeas ? 'Ideas' : selected!.title)}</span>` : ''}</nav><div></div></header><div class="desk-content">${selected ? taskBody(selected) : '<h1>Choose a task to begin.</h1>'}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}</div></main><aside class="right-rail">${connection?.shareUrl ? `<div class="host-status"><i class="status-dot status-running" aria-hidden="true"></i><span title="${escape(connection.shareUrl)}">Hosting on this computer</span><button class="text-button" data-action="copy-host-address" data-address="${escape(connection.shareUrl)}">Copy address</button></div>` : ''}<span class="section-label">Team</span>${snapshot.members.map(member => `<div class="member"><span class="avatar">${escape(member.name.slice(0, 1).toUpperCase())}</span><div>${escape(member.name)}<small>${escape(sentenceCase(member.role))}</small></div></div>`).join('')}${assigningRuleMarkup(me?.role === 'owner')}<button class="secondary invite" data-action="invite">Invite member</button>${currentInvitationLink ? `<div class="invitation-link"><label>Invitation link<input readonly value="${escape(currentInvitationLink)}"></label><button class="secondary" data-action="copy-invitation">Copy link</button><small>One-time link, valid for 24 hours. Share it only with the person you want to invite.</small></div>` : ''}<p class="rail-note">Updates appear as teammates work. Approval stays with the person assigned.</p></aside></div>`;
   document.querySelector('.desk-content')?.classList.toggle('console-active', (taskTab === 'console' && !showWorkspaceChat) || showOrchestrator);
   document.querySelector('.topbar div')!.innerHTML = `<button class="text-button topbar-jump" data-action="open-palette" title="Jump to a task, person, or action">Jump<kbd>Ctrl</kbd><kbd>K</kbd></button><button class="secondary topbar-chat" data-action="open-chat-drawer" title="Team chat (C)">Chat${unread ? `<span class="chat-count">${unread}</span>` : ''}</button><button class="text-button" data-action="disconnect">Projects</button>`;
   if (me?.role !== 'owner') document.querySelector('.invite')?.remove();
@@ -1124,10 +1202,16 @@ function render() {
   document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link orchestrator-link ${showOrchestrator ? 'active' : ''}" data-action="open-orchestrator">Orchestrator${orchestratorEvents.length ? `<span class="chat-count" aria-label="${orchestratorEvents.length} updates waiting" title="${escape(eventLine(orchestratorEvents))}">${orchestratorEvents.length}</span>` : orchestrator?.active && orchestrator.workspaceId === snapshot.workspace.id ? '<i class="status-dot status-running" aria-label="running"></i>' : ''}</button>`);
   const hereCount = (snapshot.presence ?? []).filter(item => item.status === 'here').length;
   document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link office-link ${showOffice ? 'active' : ''}" data-action="open-office">Office${hereCount ? `<span class="section-count" aria-label="${hereCount} here">${hereCount} here</span>` : ''}</button>`);
+  const openIdeas = (snapshot.ideas ?? []).filter(idea => idea.stage !== 'done').length;
+  document.querySelector('.task-list')!.insertAdjacentHTML('afterend', `<button class="chat-link ideas-link ${showIdeas ? 'active' : ''}" data-action="open-ideas">Ideas${openIdeas ? `<span class="section-count" aria-label="${openIdeas} open">${openIdeas}</span>` : ''}</button>`);
   if (showWorkspaceChat) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
     document.querySelector('.desk-content')!.classList.add('chat-page');
     document.querySelector('.desk-content')!.innerHTML = `${chatRoomMarkup()}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}`;
+  } else if (showIdeas) {
+    document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
+    document.querySelector('.desk-content')!.classList.add('office-page');
+    document.querySelector('.desk-content')!.innerHTML = `${ideasMarkup()}${notice ? `<p class="notice" role="status" aria-live="polite">${escape(notice)}${noticeActions ? ` <span class="notice-actions">${noticeActions}</span>` : ''}</p>` : ''}`;
   } else if (showOffice) {
     document.querySelectorAll('.task-link.active').forEach(item => item.classList.remove('active'));
     document.querySelector('.desk-content')!.classList.add('office-page');
@@ -1241,7 +1325,7 @@ function render() {
   }
   const chatStream = document.querySelector<HTMLElement>('#team-chat-stream');
   if (chatStream) chatStream.scrollTop = chatWasAtBottom ? chatStream.scrollHeight : previousChatScroll;
-  const deskKey = `${selected?.id}|${taskTab}|${showWorkspaceChat}|${showOrchestrator}|${showOffice}`;
+  const deskKey = `${selected?.id}|${taskTab}|${showWorkspaceChat}|${showOrchestrator}|${showOffice}|${showIdeas}`;
   regionScrollSelectors.forEach((selector, index) => {
     const region = document.querySelector(selector);
     if (region && (selector !== '.desk' || deskKey === renderedDeskKey)) region.scrollTop = previousRegionScroll[index] ?? 0;
@@ -1259,6 +1343,11 @@ app.addEventListener('change', event => {
   if (target.id === 'theme') { selectTheme((target as HTMLSelectElement).value as ThemeId); render(); }
   if (target.id === 'press-sound') setPressSound((target as HTMLInputElement).checked);
   if (target.id === 'office-sharing') localStorage.setItem(officeSharingKey, (target as HTMLSelectElement).value);
+  if (ideaDraft && target.closest('#new-idea') && (target as HTMLInputElement).name === 'size') { ideaDraft.size = (target as HTMLInputElement).value as IdeaSize; render(); }
+  if (target.dataset.ideaSize) {
+    const idea = snapshot?.ideas?.find(item => item.id === target.dataset.ideaSize);
+    if (idea) void command(null, { type: 'update-idea', ideaId: idea.id, revision: idea.revision, size: (target as HTMLSelectElement).value }).catch(error => { notice = (error as Error).message; render(); });
+  }
   if (target.dataset.auto) {
     const settings = loadAutoSettings();
     const key = target.dataset.auto as keyof AutoSettings;
@@ -1286,6 +1375,8 @@ app.addEventListener('input', event => {
   const target = event.target as HTMLTextAreaElement;
   if (target.id === 'team-chat-body') chatDraft = target.value;
   if (target.closest('.chat-edit')) editingDraft = target.value;
+  if (ideaDraft && target.closest('#new-idea') && (target.name === 'title' || target.name === 'note')) ideaDraft[target.name] = target.value;
+  if (target.closest('#skip-idea')) skipDraft = target.value;
 });
 
 app.addEventListener('submit', async event => {
@@ -1369,6 +1460,18 @@ app.addEventListener('submit', async event => {
       const note = value('note');
       decliningTaskId = null;
       await command(task, { type: 'decline-task', ...(note ? { note } : {}) });
+    } else if (form.id === 'new-idea') {
+      const size = value('size') as IdeaSize;
+      const note = value('note');
+      await command(null, { type: 'create-idea', ideaId: crypto.randomUUID(), title: value('title'), size, ...(note ? { note } : {}) });
+      ideaDraft = null;
+      render();
+    } else if (form.id === 'skip-idea') {
+      const idea = snapshot!.ideas?.find(item => item.id === form.dataset.idea);
+      if (!idea) throw new Error('Choose an idea first.');
+      await command(null, { type: 'skip-idea-stage', ideaId: idea.id, revision: idea.revision, reason: value('reason') });
+      skippingIdeaId = null;
+      render();
     } else if (form.id === 'new-task') {
       await command(null, { type: 'create-task', taskId: crypto.randomUUID(), title: value('title'), description: value('description'), assigneeId: value('assigneeId') || null });
     } else if (form.id === 'package-card') {
@@ -1500,7 +1603,7 @@ app.addEventListener('click', async event => {
   if (button.dataset.task) {
     if (watchedTaskId && watchedTaskId !== button.dataset.task) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
     if (selectedTaskId !== button.dataset.task) taskTab = 'overview';
-    selectedTaskId = button.dataset.task; showWorkspaceChat = false; showOrchestrator = false; showOffice = false; render(); return;
+    selectedTaskId = button.dataset.task; showWorkspaceChat = false; showOrchestrator = false; showOffice = false; showIdeas = false; render(); return;
   }
   const action = button.dataset.action;
   const task = snapshot?.tasks.find(item => item.id === selectedTaskId) ?? snapshot?.tasks[0];
@@ -1581,8 +1684,8 @@ app.addEventListener('click', async event => {
       currentInvitationLink = '';
       snapshot = null;
       selectedTaskId = null;
-      showWorkspaceChat = false; showChatDrawer = false; showOrchestrator = false; showOffice = false;
-      orchestratorEvents = []; sharePromptTaskId = null;
+      showWorkspaceChat = false; showChatDrawer = false; showOrchestrator = false; showOffice = false; showIdeas = false;
+      orchestratorEvents = []; sharePromptTaskId = null; ideaDraft = null; skippingIdeaId = null;
       view = 'review';
       notice = '';
       localStorage.setItem('console-connect.connection', JSON.stringify(connection));
@@ -1594,7 +1697,7 @@ app.addEventListener('click', async event => {
     }
     if (action === 'workspace-chat') {
       if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
-      showWorkspaceChat = true; showOrchestrator = false; showOffice = false; showChatDrawer = false; markTeamChatRead(); render(); return;
+      showWorkspaceChat = true; showOrchestrator = false; showOffice = false; showIdeas = false; showChatDrawer = false; markTeamChatRead(); render(); return;
     }
     if (action === 'task-tab') { taskTab = button.dataset.tab as TaskTab; render(); return; }
     if (action === 'disconnect') {
@@ -1603,7 +1706,7 @@ app.addEventListener('click', async event => {
       stopHostedWatch?.(); stopHostedWatch = null;
       window.consoleConnect.stopWatchingWorkspace();
       connection = null; snapshot = null; view = 'dashboard'; notice = ''; currentInvitationLink = '';
-      orchestratorEvents = []; sharePromptTaskId = null;
+      orchestratorEvents = []; sharePromptTaskId = null; ideaDraft = null; skippingIdeaId = null;
       projectSummariesLoadedAt = 0;
       showChatDrawer = false; showWorkspaceChat = false; chatToast = null;
       localStorage.removeItem('console-connect.connection'); render(); return;
@@ -1617,7 +1720,7 @@ app.addEventListener('click', async event => {
       render();
       return;
     }
-    if (action === 'new-task') { showWorkspaceChat = false; showOrchestrator = false; showOffice = false; document.querySelector('.desk-content')!.innerHTML = `<h1>New task</h1><form id="new-task"><label>Title<input name="title" required></label><label>Description<textarea name="description"></textarea></label><label>Assign to<select name="assigneeId"><option value="">Unassigned</option>${snapshot!.members.map(member => `<option value="${member.id}">${escape(member.name)}</option>`).join('')}</select></label><button type="submit">Create task</button></form>`; return; }
+    if (action === 'new-task') { showWorkspaceChat = false; showOrchestrator = false; showOffice = false; showIdeas = false; document.querySelector('.desk-content')!.innerHTML = `<h1>New task</h1><form id="new-task"><label>Title<input name="title" required></label><label>Description<textarea name="description"></textarea></label><label>Assign to<select name="assigneeId"><option value="">Unassigned</option>${snapshot!.members.map(member => `<option value="${member.id}">${escape(member.name)}</option>`).join('')}</select></label><button type="submit">Create task</button></form>`; return; }
     if (action === 'propose-decision') {
       document.querySelector('.desk-content')!.innerHTML = `<h1>Propose decision</h1><form id="decision"><label>Title<input name="title" required></label><label>Decision<textarea name="body" required></textarea></label><label>Replaces<select name="supersedesId"><option value="">No previous decision</option>${snapshot!.decisions.filter(item => item.status === 'official').map(item => `<option value="${item.id}">${escape(item.title)}</option>`).join('')}</select></label><fieldset><legend>Affected tasks</legend>${snapshot!.tasks.map(item => `<label><input type="checkbox" name="affectedTaskIds" value="${item.id}">${escape(item.title)}</label>`).join('')}</fieldset><button type="submit">Share proposal</button></form>`;
       return;
@@ -1668,10 +1771,18 @@ app.addEventListener('click', async event => {
       if (choice === 'show') await setConsoleShared(taskId, true);
       render(); return;
     }
-    if (action === 'open-task' && button.dataset.task) { selectedTaskId = button.dataset.task; showOffice = false; noticeActions = ''; render(); return; }
-    if (action === 'open-office') { showOffice = true; showOrchestrator = false; showWorkspaceChat = false; render(); void refresh(); return; }
+    if (action === 'open-task' && button.dataset.task) { selectedTaskId = button.dataset.task; showOffice = false; showIdeas = false; noticeActions = ''; render(); return; }
+    if (action === 'open-office') { showOffice = true; showIdeas = false; showOrchestrator = false; showWorkspaceChat = false; render(); void refresh(); return; }
+    if (action === 'open-ideas') { showIdeas = true; showOffice = false; showOrchestrator = false; showWorkspaceChat = false; render(); return; }
+    if (action === 'new-idea') { ideaDraft = { title: '', note: '', size: 'feature' }; render(); document.querySelector<HTMLInputElement>('#new-idea input[name=title]')?.focus(); return; }
+    if (action === 'cancel-idea') { ideaDraft = null; render(); return; }
+    if (action === 'start-skip-idea') { skippingIdeaId = button.dataset.idea!; skipDraft = ''; render(); document.querySelector<HTMLInputElement>('#skip-idea input')?.focus(); return; }
+    if (action === 'cancel-skip-idea') { skippingIdeaId = null; render(); return; }
+    const idea = button.dataset.idea ? snapshot?.ideas?.find(item => item.id === button.dataset.idea) : undefined;
+    if (idea && (action === 'mark-idea-ready' || action === 'advance-idea')) { await command(null, { type: action, ideaId: idea.id, revision: idea.revision }); return; }
+    if (idea && action === 'delete-idea') { await command(null, { type: 'delete-idea', ideaId: idea.id }); return; }
     if (action === 'office-watch') {
-      selectedTaskId = button.dataset.task!; taskTab = 'console'; showOffice = false; render();
+      selectedTaskId = button.dataset.task!; taskTab = 'console'; showOffice = false; showIdeas = false; render();
       clickAction('[data-action=watch-terminal]');
       return;
     }
@@ -1699,7 +1810,7 @@ app.addEventListener('click', async event => {
     if (action === 'copy-cli-folder') { await window.consoleConnect.copyText(cliFolderPath); notice = 'Folder copied.'; render(); return; }
     if (action === 'open-orchestrator') {
       if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
-      showOrchestrator = true; showWorkspaceChat = false; showOffice = false; render();
+      showOrchestrator = true; showWorkspaceChat = false; showOffice = false; showIdeas = false; render();
       void loadProjectKnowledge(null).then(() => { if (showOrchestrator) render(); }).catch(() => {});
       return;
     }

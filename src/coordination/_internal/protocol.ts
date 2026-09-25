@@ -53,6 +53,30 @@ export interface Idea {
   documents: { stage: IdeaStage; path: string }[];
   taskIds: string[]; specDecisionId?: string; sample?: boolean;
 }
+export function nextStage(idea: Idea): Idea['stage'] {
+  if (idea.stage === 'done') return 'done';
+  const path = ideaPaths[idea.size];
+  return path[path.indexOf(idea.stage) + 1] ?? 'done';
+}
+
+/** The gate for leaving the idea's current stage, or null when it is open (ADR Q20). The host enforces it; cards show it. */
+export function ideaGate(idea: Idea, tasks: Task[], decisions: Decision[]): string | null {
+  const linked = tasks.filter(task => idea.taskIds.includes(task.id));
+  switch (idea.stage) {
+    case 'talk': return idea.readyBy ? null : 'An Owner or Reviewer must mark it ready.';
+    case 'write': return decisions.some(item => item.id === idea.specDecisionId && item.status === 'official')
+      ? null : 'Approve the spec as a decision first.';
+    case 'split': return linked.length ? null : 'Link at least one task.';
+    case 'build':
+      if (!linked.length) return 'Link at least one task.';
+      return linked.every(task => task.status === 'accepted' || task.status === 'completed') ? null : 'Waiting for every linked task to be accepted.';
+    case 'review':
+      if (!linked.length) return 'Link at least one task.';
+      return linked.every(task => task.status === 'completed') ? null : 'Waiting for every linked task to be completed.';
+    case 'done': return 'This idea is done.';
+  }
+}
+
 export interface Snapshot {
   workspace: { id: string; name: string; repository: string };
   revision: number; members: Member[]; tasks: Task[]; messages: Message[]; decisions: Decision[]; ideas?: Idea[];

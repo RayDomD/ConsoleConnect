@@ -515,6 +515,54 @@ try {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/assigned-by-me.png', Buffer.from(captured.data, 'base64'));
   }
+  // Ideas (guided path 4.1d): create with a size, mark ready, advance, skip with a reason, and delete, all by clicks.
+  const until = async (expression, failure, tries = 40) => {
+    for (let attempt = 0; attempt < tries; attempt++) {
+      if (await evaluate(expression)) return;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    throw new Error(`${failure}: ${await evaluate("document.querySelector('.desk-content')?.innerText.slice(0, 600)")}`);
+  };
+  await evaluate("document.querySelector('[data-action=open-ideas]').click()");
+  await until("document.querySelector('.breadcrumb-current')?.textContent === 'Ideas' && Boolean(document.querySelector('[data-action=new-idea]'))", 'The Ideas view did not open');
+  await evaluate("document.querySelector('[data-action=new-idea]').click()");
+  await evaluate("(() => { const input = document.querySelector('#new-idea input[name=title]'); input.value = 'Invite links that expire'; input.dispatchEvent(new Event('input', { bubbles: true })); })()");
+  await evaluate("document.querySelector('#new-idea input[value=big]').click()");
+  await until("document.querySelectorAll('.idea-preview .off').length === 0 && document.querySelector('#new-idea input[name=title]')?.value === 'Invite links that expire'", 'Choosing Big idea did not show all five stages or lost the title');
+  await evaluate("document.querySelector('#new-idea input[value=feature]').click()");
+  await until("document.querySelector('.idea-preview .off')?.textContent === 'Write it up'", 'Choosing Feature did not strike Write it up');
+  await evaluate("document.querySelector('#new-idea button[type=submit]').click()");
+  const ideaNamed = async title => (await hostCall('/state')).ideas.find(item => item.title === title);
+  for (let attempt = 0; attempt < 30 && !(await ideaNamed('Invite links that expire')); attempt++) await new Promise(resolve => setTimeout(resolve, 200));
+  const smokeIdea = await ideaNamed('Invite links that expire');
+  if (smokeIdea?.size !== 'feature' || smokeIdea.stage !== 'talk') throw new Error(`New idea was not created as a Feature at Talk it through: ${JSON.stringify(smokeIdea)}`);
+  const card = `document.querySelector('.idea-card[data-idea="${smokeIdea.id}"]')`;
+  await until(`${card}?.querySelector('.idea-chip.on')?.textContent === 'Talk it through' && Boolean(${card}.querySelector('[data-action=mark-idea-ready]'))`, 'The idea card did not show Talk it through with Mark ready');
+  await evaluate(`${card}.querySelector('[data-action=mark-idea-ready]').click()`);
+  await until(`Boolean(${card}?.querySelector('[data-action=advance-idea]'))`, 'Mark ready did not open the gate');
+  await evaluate(`${card}.querySelector('[data-action=advance-idea]').click()`);
+  await until(`${card}?.querySelector('.idea-chip.on')?.textContent === 'Split into tasks' && ${card}.querySelector('.idea-gate')?.textContent === 'Link at least one task.'`, 'Next step did not move the idea to Split into tasks behind its gate');
+  // A blocked task says what it waits on (4.1b), and the idea CLI links tasks (4.1c).
+  const [columnTaskId, checkTaskId] = [crypto.randomUUID(), crypto.randomUUID()];
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId: columnTaskId, title: 'Expiry column', description: '', assigneeId: null });
+  await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId: checkTaskId, title: 'Expiry check', description: '', assigneeId: null, after: [columnTaskId] });
+  await until(`document.querySelector('[data-task="${checkTaskId}"] small')?.textContent === 'Waiting on Expiry column'`, 'A blocked task did not say what it waits on');
+  const linked = await cli(['idea', 'link', smokeIdea.id.slice(0, 8), '--task', `${columnTaskId.slice(0, 8)},${checkTaskId.slice(0, 8)}`, '--doc', 'docs/ideas/invite-links-that-expire.md', '--stage', 'talk']);
+  if (linked.code !== 0) throw new Error(`idea link failed: ${JSON.stringify(linked)}`);
+  await until(`Boolean(${card}?.querySelector('[data-action=advance-idea]')) && ${card}.querySelectorAll('.idea-task').length === 2 && ${card}.querySelector('.idea-files')?.textContent.includes('invite-links-that-expire.md')`, 'Linking tasks and the talk document did not show on the card');
+  await evaluate(`${card}.querySelector('[data-action=advance-idea]').click()`);
+  await until(`${card}?.querySelector('.idea-chip.on')?.textContent === 'Build'`, 'Next step did not move the idea to Build');
+  await evaluate(`${card}.querySelector('[data-action=start-skip-idea]').click()`);
+  await until("Boolean(document.querySelector('#skip-idea input[name=reason]'))", 'Skip stage did not ask why');
+  await evaluate("(() => { const input = document.querySelector('#skip-idea input[name=reason]'); input.value = 'Shipped by hand'; input.dispatchEvent(new Event('input', { bubbles: true })); document.querySelector('#skip-idea button[type=submit]').click(); })()");
+  await until(`${card}?.querySelector('.idea-chip.on')?.textContent === 'Review' && ${card}.querySelector('.idea-chip.skipped')?.title === 'Shipped by hand' && ${card}.querySelector('.idea-skips')?.textContent.includes('Shipped by hand')`, 'Skipping Build was not recorded on the card');
+  if (process.argv.includes('--screenshot')) {
+    const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
+    await writeFile('dist/ideas.png', Buffer.from(captured.data, 'base64'));
+  }
+  await evaluate(`${card}.querySelector('[data-action=delete-idea]').click()`);
+  await until(`!${card}`, 'Delete did not remove the idea card');
+  if (await ideaNamed('Invite links that expire')) throw new Error('Delete did not remove the idea on the host.');
   // A tool proposes a review through console-connect; only the person's click sends it.
   const reviewTaskId = crypto.randomUUID();
   await hostCall('/commands', { id: crypto.randomUUID(), type: 'create-task', taskId: reviewTaskId, title: 'Expired invite retry', description: '', assigneeId: hostState.memberId });
