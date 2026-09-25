@@ -1,7 +1,7 @@
 ---
 title: UI improvements P1–P9 and console workspace
 date: 2026-09-25
-status: Approved
+status: Done
 summary: Build the nine approved fixes and the docked, rail, and focus console, following the saved mockups.
 ---
 

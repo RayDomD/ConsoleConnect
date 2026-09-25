@@ -1,7 +1,7 @@
 ---
 title: Build roadmap after the 2026-09-25 design session
 date: 2026-09-25
-status: Approved
+status: In Progress
 summary: Ordered build of housekeeping, P1–P9 and console workspace, orchestrator, Office, and guided path, from the ADRs written on 2026-09-25.
 ---
 
@@ -9,7 +9,7 @@ summary: Ordered build of housekeeping, P1–P9 and console workspace, orchestra
 
 ## Status & Progress Summary
 
-Approved, not started. Next: Phase 0 housekeeping, then Phase 1 from item 1.1. Nothing built yet.
+Phase 0 and Phase 1 done on 2026-09-25 (summary: `docs/session-summaries/2026-09-25-ui-improvements-summary.md`). Next: Phase 2.0, the orchestrator spec.
 
 Everything decided on 2026-09-25 and not yet built. Handoff for fresh sessions: `.goal/2026-09-25-build.md`. Sizes are rough session estimates.
 
