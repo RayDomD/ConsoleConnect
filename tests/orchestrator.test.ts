@@ -153,5 +153,16 @@ describe('console-connect commands in the app', () => {
     const forTask = (await runCliCommand(['brief', '--task', 'abbb'], context, api)).text;
     expect(forTask).toContain('Task "Expired invite retry" (abbbbbbb) for Sam');
   });
+
+  test('the brief carries the project map and heads-ups, from main or from the task branch', async () => {
+    const { api } = workspace();
+    const knowledge = async (taskId: string | null) => ({ source: taskId ? 'your task branch' : 'main folder',
+      lines: ['Start here:', '  docs/specification.md: Read before any feature work. (protected)'], flags: ['docs/decisions/d1.md differs from the approved decision "Use OAuth". Use the approved text.'] });
+    const main = (await runCliCommand(['brief'], context, { ...api, projectKnowledge: knowledge })).text;
+    expect(main).toContain('Project map (docs/README.md @ main folder):\n  Start here:\n    docs/specification.md: Read before any feature work. (protected)');
+    expect(main).toContain('Heads-up: docs/decisions/d1.md differs from the approved decision "Use OAuth". Use the approved text.');
+    const branch = (await runCliCommand(['brief', '--task', 'abbb'], context, { ...api, projectKnowledge: knowledge })).text;
+    expect(branch).toContain('Project map (docs/README.md @ your task branch):');
+  });
 });
 

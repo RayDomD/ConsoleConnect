@@ -1,3 +1,5 @@
+export { draftProjectMap, isProtected, knowledgeFlags, knownProjectPaths, mapLines, parseProjectMap, projectMapPath, protectedChanges } from './_internal/project-map';
+export type { KnowledgeInput, MapEntry, MapGroup } from './_internal/project-map';
 export { detectWorkerEvents, workerLine } from './_internal/worker-events';
 export type { WorkerEvent } from './_internal/worker-events';
 export { defaultAutoSettings, planAutoRun } from './_internal/auto';

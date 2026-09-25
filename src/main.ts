@@ -12,6 +12,7 @@ import { resolveLinkedRepository } from './local-repository';
 import { oauthCallbackUrl } from './oauth';
 import { receiveOAuthCallback } from './oauth-callback';
 import { consoleEnvironment, startCliServer, writeCliShims } from './cli-server';
+import { readProjectKnowledge, writeDraftProjectMap } from './project-knowledge';
 
 let hosted: Awaited<ReturnType<typeof startHost>> | null = null;
 type WorkspaceConnection = { url: string; token: string; mode?: 'local' } | {
@@ -301,11 +302,31 @@ ipcMain.on('stop-watch-terminal', (_event, input: { taskId: string }) => {
   terminalWatches.get(input.taskId)?.abort();
   terminalWatches.delete(input.taskId);
 });
-ipcMain.on('terminal-write', (_event, input: { taskId: string; data: string }) => sessions.get(input.taskId)?.terminal.write(input.data));
+// A tool can exit between the renderer's last keystroke or resize and the exit event, so both tolerate a closed pty.
+function withLiveTerminal(taskId: string, action: (terminal: IPty) => void) {
+  const session = sessions.get(taskId);
+  if (!session) return;
+  try { action(session.terminal); } catch { /* The tool already exited; its exit event cleans up the session. */ }
+}
+ipcMain.on('terminal-write', (_event, input: { taskId: string; data: string }) => withLiveTerminal(input.taskId, terminal => terminal.write(input.data)));
 ipcMain.handle('worktree-changes', (_event, input: { taskId: string }) => {
   if (!/^[0-9a-f-]{36}$/i.test(input.taskId)) throw new Error('Choose a valid task.');
   return worktreeChanges(join(app.getPath('userData'), 'worktrees', input.taskId));
 });
+// Project map and drift checks (orchestrator ADR Q13): from the task worktree for workers, the main folder otherwise.
+ipcMain.handle('project-knowledge', async (_event, input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; decisionIds: string[] }) => {
+  if (input.taskId) {
+    if (!/^[0-9a-f-]{36}$/i.test(input.taskId)) throw new Error('Choose a valid task.');
+    return { source: 'your task branch', ...await readProjectKnowledge(join(app.getPath('userData'), 'worktrees', input.taskId), { ...input, checkMain: false }) };
+  }
+  if (!input.repositoryPath) return null;
+  const root = await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository);
+  return { source: 'main folder', ...await readProjectKnowledge(root, { ...input, checkMain: true }) };
+});
+
+ipcMain.handle('draft-project-map', async (_event, input: { repositoryPath: string; workspaceRepository: string }) =>
+  writeDraftProjectMap(await resolveLinkedRepository(input.repositoryPath, input.workspaceRepository)));
+
 ipcMain.handle('worktree-facts', async (_event, input: { taskId: string }) => {
   if (!/^[0-9a-f-]{36}$/i.test(input.taskId)) throw new Error('Choose a valid task.');
   const directory = join(app.getPath('userData'), 'worktrees', input.taskId);
@@ -313,9 +334,9 @@ ipcMain.handle('worktree-facts', async (_event, input: { taskId: string }) => {
   catch { throw new Error('No task folder on this computer yet. Launch the console first, or fill in the package by hand.'); }
 });
 // The session's onExit cleans up and tells the renderer.
-ipcMain.on('terminal-kill', (_event, input: { taskId: string }) => sessions.get(input.taskId)?.terminal.kill());
+ipcMain.on('terminal-kill', (_event, input: { taskId: string }) => withLiveTerminal(input.taskId, terminal => terminal.kill()));
 ipcMain.on('terminal-resize', (_event, input: { taskId: string; cols: number; rows: number }) => {
-  if (input.cols > 0 && input.rows > 0) sessions.get(input.taskId)?.terminal.resize(input.cols, input.rows);
+  if (input.cols > 0 && input.rows > 0) withLiveTerminal(input.taskId, terminal => terminal.resize(input.cols, input.rows));
 });
 
 app.on('window-all-closed', () => app.quit());

@@ -14,6 +14,13 @@ export interface WorkspaceApi {
   hold(item: { argv: string[]; summary: string }): void;
   /** The caller's automatic-handling state for the brief, e.g. "Auto: questions"; absent means off. */
   autoSummary?(): string;
+  /** The project map and heads-ups, read from main (taskId null) or from the task's branch. */
+  projectKnowledge?(taskId: string | null): Promise<{ source: string; lines: string[]; flags: string[] } | null>;
+}
+
+function knowledgeText(knowledge: { source: string; lines: string[]; flags: string[] } | null) {
+  if (!knowledge) return [];
+  return [`Project map (docs/README.md @ ${knowledge.source}):`, ...knowledge.lines.map(line => `  ${line}`), ...knowledge.flags.map(flag => `Heads-up: ${flag}`)];
 }
 export interface PackageDraft { taskId: string; summary: string; checks: string; questions: string; via?: Tool }
 export interface ReviewProposal { id: string; taskId: string; action: 'accept' | 'changes'; note: string; via?: Tool }
@@ -118,9 +125,12 @@ export async function runCliCommand(argv: string[], context: CliContext, api: Wo
   if (group === 'brief') {
     if (named.task) {
       const task = findTask(state, named.task);
-      return { text: taskBrief(state, task), data: { task: taskSummary(state, task) } };
+      const knowledge = await api.projectKnowledge?.(task.id) ?? null;
+      return { text: [taskBrief(state, task), ...knowledgeText(knowledge)].join('\n'), data: { task: taskSummary(state, task), knowledge } };
     }
-    return brief(state, me, api.autoSummary?.() ?? 'Auto: off');
+    const result = brief(state, me, api.autoSummary?.() ?? 'Auto: off');
+    const knowledge = await api.projectKnowledge?.(null) ?? null;
+    return { text: [result.text, ...knowledgeText(knowledge)].join('\n'), data: { ...(result.data as object), knowledge } };
   }
   if (group === 'ask') {
     if (!context.taskId) throw new CliError('Run ask inside a task console, or use task reply <id> <message>.');

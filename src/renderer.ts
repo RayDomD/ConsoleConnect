@@ -6,10 +6,11 @@ import { FitAddon } from '@xterm/addon-fit';
 import { flushPending, loadPending, savePending } from './offline';
 import { hostedAccessToken, hostedProjects, hostedRequest, hostedSignIn, watchHostedWorkspace, type SupabaseConnection } from './supabase-client';
 import { invitationLink, parseInvitationLink } from './invitations';
+import { renderDecisionDocument } from './decision-document';
 import { repositoryIdentity } from './repository';
 import { openPalette, paletteOpen, type PaletteItem } from './palette';
 import { consoleReadiness, needsInput } from './console-state';
-import { defaultAutoSettings, detectEvents, detectWorkerEvents, eventLine, planAutoRun, runCliCommand, taskBrief, workerLine, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkerEvent, type WorkspaceApi } from './orchestrator';
+import { defaultAutoSettings, detectEvents, detectWorkerEvents, knowledgeFlags, mapLines, parseProjectMap, protectedChanges, type MapGroup, eventLine, planAutoRun, runCliCommand, taskBrief, workerLine, type AutoSettings, type AutoUsage, type OrchestratorEvent, type PackageDraft, type ReviewProposal, type WorkerEvent, type WorkspaceApi } from './orchestrator';
 import { captureMotion, dismiss, drawerExit, installPressSound, playMotion, pressSoundEnabled, setPressSound } from './motion';
 
 type Result = { status: number; data: any };
@@ -44,6 +45,8 @@ declare global {
       terminalKill(input: { taskId: string }): void;
       worktreeChanges(input: { taskId: string }): Promise<Array<{ path: string; added: number | null; removed: number | null }>>;
       worktreeFacts(input: { taskId: string }): Promise<{ branch: string; commit: string; files: Array<{ path: string; added: number | null; removed: number | null }>; pullRequestUrl?: string }>;
+      projectKnowledge(input: { repositoryPath?: string; taskId?: string; workspaceRepository: string; decisionIds: string[] }): Promise<{ source: string; mapText: string | null; decisionFiles: Record<string, string | null>; commits: Array<{ sha: string; subject: string; paths: string[]; pullRequests: string[] }>; commitsChecked: boolean } | null>;
+      draftProjectMap(input: { repositoryPath: string; workspaceRepository: string }): Promise<string>;
       cliFolder(): Promise<string>;
       onCliRequest(callback: (request: { id: string; argv: string[]; cwd: string; tool?: string; console?: string; taskId: string | null }) => void): void;
       replyToCli(value: { id: string; reply: { ok: true; text: string; data: unknown } | { ok: false; error: string } }): void;
@@ -355,6 +358,33 @@ async function chooseProjectFolder(project: SavedProject) {
   project.localRepositoryPath = path;
   localStorage.setItem(projectsKey, JSON.stringify(projects));
   return path;
+}
+
+// The saved folder only: reading project knowledge never opens a folder picker.
+function savedProjectFolder() {
+  const active = connection;
+  return active ? projects.find(item => item.id === projectId(active))?.localRepositoryPath : undefined;
+}
+
+// The project map from main, cached for reviewer warnings and the orchestrator rail (orchestrator ADR Q13).
+let projectMap: { workspaceId: string; groups: MapGroup[] | null } | null = null;
+
+async function loadProjectKnowledge(taskId: string | null) {
+  if (!snapshot) return null;
+  const repositoryPath = savedProjectFolder();
+  if (!taskId && !repositoryPath) return null;
+  const official = snapshot.decisions.filter(decision => decision.status === 'official' && decision.documentCommit);
+  const read = await window.consoleConnect.projectKnowledge({ repositoryPath, taskId: taskId ?? undefined,
+    workspaceRepository: snapshot.workspace.repository, decisionIds: official.map(decision => decision.id) });
+  if (!read) return null;
+  const groups = read.mapText ? parseProjectMap(read.mapText) : null;
+  if (!taskId) projectMap = { workspaceId: snapshot.workspace.id, groups };
+  const flags = knowledgeFlags({
+    decisions: official.map(decision => ({ id: decision.id, title: decision.title, expected: renderDecisionDocument(decision), actual: read.decisionFiles[decision.id] ?? null })),
+    commits: read.commits, commitsChecked: read.commitsChecked,
+    packagePullRequests: snapshot.tasks.flatMap(task => task.package?.pullRequestUrl ? [task.package.pullRequestUrl] : []),
+  });
+  return { source: read.source, lines: groups ? mapLines(groups) : ['No project map yet. Draft docs/README.md from the Orchestrator view.'], flags };
 }
 
 async function currentProjectFolder() {
@@ -800,7 +830,12 @@ function orchestratorRailMarkup() {
     ? cliActivity.map(item => `<div class="activity-item"><span>${escape(item.text)}</span><small>${new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(item.at)}${item.tool ? ` · ${viaLabel(item.tool)}` : ''}</small></div>`).join('')
     : '<p class="rail-meta">Nothing yet. Commands your tool runs through console-connect show here.</p>';
   const held = heldAssignments.length ? `<section class="held-work"><div class="section-head"><span class="section-label">Held for you</span></div><p class="rail-meta">Automatic runs never hand out work. Send these yourself.</p>${heldAssignments.map(item => `<div class="held-item"><span>${escape(item.summary)}</span><div><button class="text-button" data-action="discard-held" data-held="${item.id}">Discard</button><button class="secondary" data-action="send-held" data-held="${item.id}">Send</button></div></div>`).join('')}</section>` : '';
-  return `${held}${handedOut || '<section class="assigned-by-me"><div class="section-head"><span class="section-label">Assigned by me</span></div><p class="rail-meta">Nothing handed out yet. Tasks you or your orchestrator assign show up here, grouped by where they stand.</p></section>'}<section class="cli-activity"><div class="section-head"><span class="section-label">CLI activity</span></div>${activity}</section>`;
+  const map = projectMap;
+  const mapStatus = map?.workspaceId === snapshot?.workspace.id && map?.groups
+    ? (() => { const entries = map.groups!.flatMap(group => group.entries); return `<p class="rail-meta">docs/README.md · ${entries.length} entries · ${entries.filter(entry => entry.protected).length} protected</p>`; })()
+    : '<p class="rail-meta">No project map yet. The brief reads docs/README.md to tell tools what each document is.</p><button class="secondary rail-draft" data-action="draft-project-map">Draft docs/README.md</button>';
+  const mapSection = `<section class="project-map"><div class="section-head"><span class="section-label">Project map</span></div>${mapStatus}</section>`;
+  return `${held}${mapSection}${handedOut || '<section class="assigned-by-me"><div class="section-head"><span class="section-label">Assigned by me</span></div><p class="rail-meta">Nothing handed out yet. Tasks you or your orchestrator assign show up here, grouped by where they stand.</p></section>'}<section class="cli-activity"><div class="section-head"><span class="section-label">CLI activity</span></div>${activity}</section>`;
 }
 
 function mountOrchestratorTerminal() {
@@ -949,6 +984,10 @@ function render() {
     if (taskTab === 'package' && selected.pendingDecisionIds?.length) {
       const mine = selected.assigneeId === snapshot.memberId;
       document.querySelector('.task-tab-content')!.insertAdjacentHTML('afterbegin', `<div class="decision-alert"><strong>Decision changed</strong><p>${mine ? 'Review and acknowledge the official update before submitting work.' : 'The task owner must acknowledge this update before review.'}</p>${selected.pendingDecisionIds.map(id => `<div>${escape(snapshot!.decisions.find(item => item.id === id)?.title ?? id)} ${mine ? `<button class="secondary" data-action="ack-decision" data-decision="${id}">Acknowledge</button>` : ''}</div>`).join('')}</div>`);
+    }
+    if (taskTab === 'package' && selected.package && selected.status === 'submitted' && projectMap?.workspaceId === snapshot.workspace.id && projectMap.groups) {
+      const touched = protectedChanges(selected.package.deliverables, projectMap.groups);
+      if (touched.length) document.querySelector('.package-summary')?.insertAdjacentHTML('afterbegin', `<div class="protected-warning" role="status"><i class="status-dot status-submitted" aria-hidden="true"></i><div><strong>This package changes a protected document</strong><span>${touched.map(escape).join(', ')}. Protected documents need an Owner or Reviewer to accept.</span></div></div>`);
     }
     if (taskTab === 'package' && selected.package) {
       const status = selected.pullRequestStatus;
@@ -1381,6 +1420,7 @@ app.addEventListener('click', async event => {
       render();
       startWorkspaceWatch();
       await refresh();
+      void loadProjectKnowledge(null).catch(() => {});
       return;
     }
     if (action === 'workspace-chat') {
@@ -1442,6 +1482,13 @@ app.addEventListener('click', async event => {
     }
     if (action === 'copy-invitation') { await window.consoleConnect.copyText(currentInvitationLink); notice = 'Invitation link copied.'; render(); return; }
     // Workspace-level actions: they work before any task exists.
+    if (action === 'draft-project-map') {
+      const repositoryPath = await currentProjectFolder();
+      if (!repositoryPath) return;
+      const path = await window.consoleConnect.draftProjectMap({ repositoryPath, workspaceRepository: snapshot!.workspace.repository });
+      await loadProjectKnowledge(null);
+      notice = `Drafted ${path}. Edit it, then commit it so every brief reads it.`; render(); return;
+    }
     if (action === 'toggle-auto-pause') { autoPaused = !autoPaused; render(); return; }
     if (action === 'discard-held') { heldAssignments = heldAssignments.filter(item => item.id !== button.dataset.held); render(); return; }
     if (action === 'send-held') {
@@ -1454,7 +1501,9 @@ app.addEventListener('click', async event => {
     if (action === 'copy-cli-folder') { await window.consoleConnect.copyText(cliFolderPath); notice = 'Folder copied.'; render(); return; }
     if (action === 'open-orchestrator') {
       if (watchedTaskId) { window.consoleConnect.stopWatchingTerminal({ taskId: watchedTaskId }); watchedTaskId = null; watchedOutput = ''; }
-      showOrchestrator = true; showWorkspaceChat = false; render(); return;
+      showOrchestrator = true; showWorkspaceChat = false; render();
+      void loadProjectKnowledge(null).then(() => { if (showOrchestrator) render(); }).catch(() => {});
+      return;
     }
     if (action === 'start-orchestrator') {
       const repositoryPath = await currentProjectFolder();
@@ -1599,6 +1648,7 @@ const cliWorkspace: WorkspaceApi = {
   },
   propose: proposal => { reviewProposals.push(proposal); render(); },
   hold: item => { heldAssignments.push({ id: crypto.randomUUID(), ...item }); render(); },
+  projectKnowledge: loadProjectKnowledge,
   autoSummary: () => {
     const settings = loadAutoSettings();
     const kinds = (['questions', 'stalls', 'submissions'] as const).filter(key => settings[key] === 'auto');

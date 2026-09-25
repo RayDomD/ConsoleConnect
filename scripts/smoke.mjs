@@ -1,7 +1,7 @@
 import electron from 'electron';
 import WebSocket from 'ws';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
@@ -386,6 +386,23 @@ try {
     const captured = await call('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false });
     await writeFile('dist/orchestrator.png', Buffer.from(captured.data, 'base64'));
   }
+  // The project map: drafted from the files the app finds, then read into every brief.
+  await mkdir(join(repository, 'docs'), { recursive: true });
+  await writeFile(join(repository, 'docs', 'specification.md'), '# Spec\n');
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("Boolean(document.querySelector('[data-action=draft-project-map]'))")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  await evaluate("document.querySelector('[data-action=draft-project-map]').click()");
+  for (let attempt = 0; attempt < 30; attempt++) {
+    if (await evaluate("/[1-9] protected/.test(document.querySelector('.project-map')?.innerText ?? '')")) break;
+    await new Promise(resolve => setTimeout(resolve, 200));
+  }
+  const mapText = await readFile(join(repository, 'docs', 'README.md'), 'utf8').catch(() => '');
+  if (!mapText.includes('- `docs/specification.md` — ') || !mapText.includes('(protected)')) throw new Error(`The drafted project map is wrong: ${mapText}`);
+  if (!(await evaluate("/[1-9] protected/.test(document.querySelector('.project-map')?.innerText ?? '')"))) throw new Error(`The orchestrator rail did not read the project map: ${await evaluate("(document.querySelector('.project-map')?.outerHTML ?? 'no section') + ' | ' + (document.querySelector('.notice')?.innerText ?? 'no notice')")}`);
+  const mapped = await cli(['brief']);
+  if (!mapped.stdout.includes('Project map (docs/README.md @ main folder):') || !mapped.stdout.includes('docs/specification.md:')) throw new Error(`The brief did not carry the project map: ${mapped.stdout}`);
   await evaluate("document.querySelector('.task-link')?.click()");
   // The owner sets the team's assigning rule from the Team section; the host records it.
   await evaluate("(() => { const select = document.querySelector('#assigning-rule'); select.value = 'leads'; select.dispatchEvent(new Event('change', { bubbles: true })); })()");
